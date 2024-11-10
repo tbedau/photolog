@@ -1,0 +1,30 @@
+name: Deploy FastAPI Photolog App
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Deploy FastAPI app to remote host
+        uses: burnett01/rsync-deployments@6.0.0
+        with:
+          switches: -avrh --delete --exclude='.venv/'
+          path: /
+          remote_path: ${{ secrets.SSH_REMOTE_PATH }}
+          remote_host: ${{ secrets.SSH_HOST }}
+          remote_user: ${{ secrets.SSH_USERNAME }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Restart FastAPI service on remote host
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: supervisorctl restart fastapi-photolog

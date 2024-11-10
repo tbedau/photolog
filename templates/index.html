@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="photolog">
+    {% for image in images %}
+    <figure class="photolog__item"
+        {% if loop.last and next_page %}
+            hx-get="/load_images?page={{ next_page }}"
+            hx-trigger="revealed"
+            hx-swap="afterend"
+        {% endif %}>
+        <img src="/images/{{ image.filename }}" 
+             alt=""
+             class="photolog__image"
+             onload="this.classList.add(this.naturalWidth > this.naturalHeight ? 'landscape' : 'portrait')">
+        <figcaption class="photolog__date">
+            {{ image.upload_date.strftime('%Y-%m-%d %H:%M:%S') }} UTC
+        </figcaption>
+    </figure>
+    {% endfor %}
+</div>
+{% endblock %}

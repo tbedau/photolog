@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="login-container">
+    <form method="POST" action="/token" class="login-form" hx-post="/token" hx-target="#error-container" hx-swap="innerHTML">
+        <input type="text" id="username" name="username" placeholder="Username" required class="login-form__input">
+        <input type="password" id="password" name="password" placeholder="Password" required class="login-form__input">
+        <button type="submit" class="login-form__button">Login</button>
+    </form>
+    <div id="error-container" class="error-container"></div>
+</div>
+
+<p class="logout-link"><a href="/">Back to Home</a></p>
+{% endblock %}
