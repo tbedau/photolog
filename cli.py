@@ -31,9 +31,9 @@ def init():
     typer.echo("Database initialized.")
 
 @app.command()
-def create_user(username: str, password: str):
+def create_user(username: str):
     """
-    Create a new user with the specified username and password.
+    Create a new user with the specified username. Prompts for password securely.
     """
     session = next(get_db_session())
     existing_user = session.exec(select(User).where(User.username == username)).first()
@@ -41,6 +41,7 @@ def create_user(username: str, password: str):
         typer.echo("User with this username already exists.")
         return
 
+    password = typer.prompt("Enter password", hide_input=True)
     hashed_password = hash_password(password)
     user = User(username=username, hashed_password=hashed_password)
     session.add(user)
