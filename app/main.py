@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.config import get_settings
-from app.middleware import AuthRedirectMiddleware, SecurityHeadersMiddleware, SecureStaticFilesMiddleware
+from app.middleware import AuthRedirectMiddleware, SecurityHeadersMiddleware
 from app.routers import auth, images
 
 # Configure the logger
@@ -40,7 +40,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(SecureStaticFilesMiddleware, upload_path=settings.UPLOAD_FOLDER)
     app.add_middleware(AuthRedirectMiddleware)
     
     # Mount static files directory and verify security of the upload path

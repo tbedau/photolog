@@ -1,4 +1,3 @@
-import os
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -45,32 +44,3 @@ class AuthRedirectMiddleware(BaseHTTPMiddleware):
             return RedirectResponse(url="/login")
         
         return response
-
-class SecureStaticFilesMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware to secure access to uploaded files, protecting against path traversal and unauthorized access.
-    
-    Args:
-        app: The FastAPI application instance.
-        upload_path (str): Path to the directory where uploads are stored.
-    """
-    
-    def __init__(self, app, upload_path: str):
-        super().__init__(app)
-        self.upload_path = upload_path
-
-    async def dispatch(self, request: Request, call_next):
-        # Ensure uploaded files are securely accessed
-        if request.url.path.startswith("/static/uploads/"):
-            filename = os.path.basename(request.url.path)
-            
-            # Protect against path traversal attempts
-            if ".." in filename or "/" in filename:
-                return RedirectResponse("/")
-            
-            # Verify if the file exists within the upload directory
-            file_path = os.path.join(self.upload_path, filename)
-            if not os.path.exists(file_path):
-                return RedirectResponse("/")
-        
-        return await call_next(request)
