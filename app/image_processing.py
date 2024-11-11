@@ -13,6 +13,7 @@ async def process_and_save_image(
 ) -> str:
     """
     Processes and saves an uploaded image file, ensuring it meets size, format, and dimension restrictions.
+    All EXIF metadata is removed from the saved image.
 
     Args:
         file (UploadFile): The uploaded image file.
@@ -85,8 +86,10 @@ async def process_and_save_image(
             ):
                 img.thumbnail((settings.MAX_DIMENSION, settings.MAX_DIMENSION))
 
-            # Save the processed image as JPEG
-            img.save(filepath, format="JPEG", quality=85, progressive=True)
+            # Save the processed image as JPEG without EXIF data
+            img_without_exif = PILImage.new(img.mode, img.size)
+            img_without_exif.putdata(img.getdata())
+            img_without_exif.save(filepath, format="JPEG", quality=90, progressive=True)
 
     except UnidentifiedImageError:
         raise HTTPException(
