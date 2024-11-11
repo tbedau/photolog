@@ -7,7 +7,10 @@ from .config import get_settings
 
 settings = get_settings()
 
-async def process_and_save_image(file: UploadFile, user_id: int, content_type: str = None) -> str:
+
+async def process_and_save_image(
+    file: UploadFile, user_id: int, content_type: str = None
+) -> str:
     """
     Processes and saves an uploaded image file, ensuring it meets size, format, and dimension restrictions.
 
@@ -21,21 +24,30 @@ async def process_and_save_image(file: UploadFile, user_id: int, content_type: s
     Raises:
         HTTPException: If the file is too large, has an unsupported format, or cannot be processed.
     """
-    
+
     # Read file content into memory
     image_data = await file.read()
 
     # Validate file size
     if len(image_data) > settings.MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File too large. Max size is 10 MB.")
+        raise HTTPException(
+            status_code=400, detail="File too large. Max size is 10 MB."
+        )
 
     # Use the provided content type or fall back to the file's content_type
     actual_content_type = content_type or file.content_type
 
     # Validate file format
-    if actual_content_type not in ["image/jpeg", "image/jpg", "image/png", "image/tiff"]:
-        raise HTTPException(status_code=400, detail="Unsupported file format. Only JPEG, PNG, and TIFF images are allowed.")
-
+    if actual_content_type not in [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/tiff",
+    ]:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file format. Only JPEG, PNG, and TIFF images are allowed.",
+        )
 
     # Generate a unique filename for storage
     filename = f"{uuid4().hex}_{user_id}.jpg"  # Save all files as JPEG for consistency
@@ -47,7 +59,7 @@ async def process_and_save_image(file: UploadFile, user_id: int, content_type: s
             # Apply EXIF orientation if present
             try:
                 for orientation in ExifTags.TAGS.keys():
-                    if ExifTags.TAGS[orientation] == 'Orientation':
+                    if ExifTags.TAGS[orientation] == "Orientation":
                         break
                 exif = img._getexif()
                 if exif:
@@ -61,21 +73,29 @@ async def process_and_save_image(file: UploadFile, user_id: int, content_type: s
             except (AttributeError, KeyError, IndexError):
                 # Skip if there's no EXIF orientation data
                 pass
-            
+
             # Convert image to RGB if necessary (ensures consistency and JPEG compatibility)
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
-            
+
             # Resize image if it exceeds max dimensions
-            if img.width > settings.MAX_DIMENSION or img.height > settings.MAX_DIMENSION:
+            if (
+                img.width > settings.MAX_DIMENSION
+                or img.height > settings.MAX_DIMENSION
+            ):
                 img.thumbnail((settings.MAX_DIMENSION, settings.MAX_DIMENSION))
-            
+
             # Save the processed image as JPEG
             img.save(filepath, format="JPEG", quality=85, progressive=True)
 
     except UnidentifiedImageError:
-        raise HTTPException(status_code=400, detail="Error processing image. Unsupported or corrupted file.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="An error occurred while processing the image.")
+        raise HTTPException(
+            status_code=400,
+            detail="Error processing image. Unsupported or corrupted file.",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=500, detail="An error occurred while processing the image."
+        )
 
     return filename

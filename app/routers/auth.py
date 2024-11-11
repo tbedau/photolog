@@ -14,6 +14,7 @@ settings = get_settings()
 router = APIRouter(tags=["authentication"])
 templates = Jinja2Templates(directory="templates")
 
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, session: Session = Depends(get_session)):
     """
@@ -31,10 +32,13 @@ async def login_page(request: Request, session: Session = Depends(get_session)):
         try:
             current_user = await get_current_user(request=request, session=session)
             if current_user:
-                return RedirectResponse(url="/upload", status_code=status.HTTP_302_FOUND)
+                return RedirectResponse(
+                    url="/upload", status_code=status.HTTP_302_FOUND
+                )
         except HTTPException:
             pass  # Ignore errors and proceed to login page
     return templates.TemplateResponse("login.html", {"request": request})
+
 
 @router.post("/token")
 async def login(
@@ -45,7 +49,7 @@ async def login(
 ):
     """
     Authenticates the user and returns a JSON response with a redirect header.
-    
+
     Args:
         request: The HTTP request object.
         response: The HTTP response object.
@@ -62,7 +66,7 @@ async def login(
         return templates.TemplateResponse(
             "partials/error_message.html",
             {"request": request, "error_message": "Incorrect username or password"},
-            status_code=200
+            status_code=200,
         )
 
     # Create access token and set expiration
@@ -70,20 +74,20 @@ async def login(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    
+
     # Set token as an HTTP-only cookie
     response = JSONResponse(
-        content={"success": True}, 
-        headers={"HX-Redirect": "/upload"}
+        content={"success": True}, headers={"HX-Redirect": "/upload"}
     )
     response.set_cookie(
         key=settings.COOKIE_NAME,
         value=access_token,
         httponly=True,
-        secure=False,  # Ensure cookie is secure in production (HTTPS only)
-        samesite="Strict"  # Prevent CSRF
+        secure=True,  # Ensure cookie is secure in production (HTTPS only)
+        samesite="Strict",  # Prevent CSRF
     )
     return response
+
 
 @router.get("/logout")
 async def logout():

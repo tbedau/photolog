@@ -21,20 +21,26 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # OAuth2 token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+
 # User model for responses
 class User(BaseModel):
     username: str
+
 
 # Password hashing and verification
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifies a plain password against a hashed password."""
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def hash_password(password: str) -> str:
     """Hashes a password using bcrypt."""
     return pwd_context.hash(password)
 
-def authenticate_user(username: str, password: str, session: Session) -> Optional[UserModel]:
+
+def authenticate_user(
+    username: str, password: str, session: Session
+) -> Optional[UserModel]:
     """
     Authenticates a user by username and password.
 
@@ -47,11 +53,12 @@ def authenticate_user(username: str, password: str, session: Session) -> Optiona
         The authenticated User object if credentials are correct, otherwise None.
     """
     user = session.exec(select(UserModel).where(UserModel.username == username)).first()
-    
+
     if not user or not verify_password(password, user.hashed_password):
         return None
-    
+
     return user
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -70,7 +77,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     token = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return token
 
-async def get_current_user(request: Request, session: Session = Depends(get_session)) -> UserModel:
+
+async def get_current_user(
+    request: Request, session: Session = Depends(get_session)
+) -> UserModel:
     """
     Retrieves the current user based on a JWT token stored in cookies.
 
@@ -89,21 +99,29 @@ async def get_current_user(request: Request, session: Session = Depends(get_sess
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
         username: str = payload.get("sub")
-        
+
         if not username:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+            )
+
     except InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+
     user = session.exec(select(UserModel).where(UserModel.username == username)).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
+
     return user
