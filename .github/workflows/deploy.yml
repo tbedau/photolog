@@ -18,8 +18,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Step 3: Transfer Application Files to Host
-      - name: Deploy Code to Host
+      # Step 3: Transfer Application Files to Remote Host
+      - name: Deploy Code to Remote Host
         uses: burnett01/rsync-deployments@6.0.0
         with:
           switches: -avrh --exclude=data/ --exclude=uploads/ --exclude=letsencrypt/ --delete
@@ -29,8 +29,8 @@ jobs:
           remote_user: ${{ secrets.SSH_USERNAME }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Step 4: Deploy Application on VPS
-      - name: Deploy on VPS
+      # Step 4: Deploy Application on Remote Host
+      - name: Deploy on Remote Host
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
