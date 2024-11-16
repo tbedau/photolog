@@ -1,30 +1,42 @@
-name: Deploy FastAPI Photolog App
+name: Deploy Photolog App
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
-  deploy-only:
+  deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check out the repository
+      # Step 1: Checkout the repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy FastAPI app to remote host
+      # Step 2: Set up Docker
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Step 3: Transfer Application Files to Host
+      - name: Deploy Code to Host
         uses: burnett01/rsync-deployments@6.0.0
         with:
-          switches: -avrh --delete --exclude='.venv/'
-          path: /
+          switches: -avrh --exclude=data/ --exclude=uploads/ --exclude=letsencrypt/ --delete
+          path: ./
           remote_path: ${{ secrets.SSH_REMOTE_PATH }}
           remote_host: ${{ secrets.SSH_HOST }}
           remote_user: ${{ secrets.SSH_USERNAME }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Restart FastAPI service on remote host
+      # Step 4: Deploy Application on VPS
+      - name: Deploy on VPS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: supervisorctl restart fastapi-photolog
+          script: |
+            cd ${{ secrets.SSH_REMOTE_PATH }}
+            docker compose down
+            docker compose up -d --build
