@@ -1,45 +1,4 @@
 services:
-  traefik:
-    image: traefik:3.2
-    container_name: traefik
-    command:
-      - "--log.level=INFO"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=inwx"
-      - "--certificatesresolvers.letsencrypt.acme.email=till.bedau@gmail.com"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"   # HTTP
-      - "443:443" # HTTPS
-    labels:
-      - "traefik.enable=true"
-      # Middleware for redirection
-      - "traefik.http.middlewares.redirect-to-photolog.redirectregex.regex=^https?://(?:www\\.)?(tillbedau|tillmannbedau)\\.de(/.*)?"
-      - "traefik.http.middlewares.redirect-to-photolog.redirectregex.replacement=https://photolog.$${1}.de$${2}"
-      - "traefik.http.middlewares.redirect-to-photolog.redirectregex.permanent=true"
-      # Redirect root domains
-      - "traefik.http.routers.redirect-tillbedau.rule=Host(`tillbedau.de`) || Host(`www.tillbedau.de`)"
-      - "traefik.http.routers.redirect-tillbedau.entrypoints=websecure"
-      - "traefik.http.routers.redirect-tillbedau.middlewares=redirect-to-photolog"
-      - "traefik.http.routers.redirect-tillbedau.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.redirect-tillmannbedau.rule=Host(`tillmannbedau.de`) || Host(`www.tillmannbedau.de`)"
-      - "traefik.http.routers.redirect-tillmannbedau.entrypoints=websecure"
-      - "traefik.http.routers.redirect-tillmannbedau.middlewares=redirect-to-photolog"
-      - "traefik.http.routers.redirect-tillmannbedau.tls.certresolver=letsencrypt"
-    environment:
-      - "INWX_USERNAME=${INWX_USERNAME}"
-      - "INWX_PASSWORD=${INWX_PASSWORD}"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "./letsencrypt:/letsencrypt"
-    networks:
-      - "traefik-public"
-    restart: unless-stopped
-
   photolog:
     build:
       context: .
