@@ -5,8 +5,6 @@ services:
     container_name: "photolog-app"
     environment:
       SECRET_KEY: "${SECRET_KEY}"
-      INWX_USERNAME: "${INWX_USERNAME}"
-      INWX_PASSWORD: "${INWX_PASSWORD}"
     ports:
       - "8000"
     labels:
@@ -19,6 +17,8 @@ services:
       - "./data:/app/data"
     networks:
       - "traefik-public"
+    depends_on:
+      - traefik
     restart: unless-stopped
 
 networks:
