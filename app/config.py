@@ -24,10 +24,6 @@ class Settings(BaseSettings):
     MAX_DIMENSION: int = 1600
     UPLOAD_FOLDER: Path = BASE_DIR / "uploads"
 
-    # External services (e.g., Traefik with INWX)
-    INWX_USERNAME: str = os.getenv("INWX_USERNAME")
-    INWX_PASSWORD: str = os.getenv("INWX_PASSWORD")
-
     class Config:
         env_file = ".env"  # Load environment variables from .env, if present
 
