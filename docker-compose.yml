@@ -17,8 +17,6 @@ services:
       - "./data:/app/data"
     networks:
       - "traefik-public"
-    depends_on:
-      - traefik
     restart: unless-stopped
 
 networks:
