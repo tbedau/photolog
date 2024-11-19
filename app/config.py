@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # Database and Security
     DATABASE_URL: str = f"sqlite:///{BASE_DIR / 'data' / 'photolog_data.db'}"
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "default-secret-key")
+    SECRET_KEY: str = os.getenv("SECRET_KEY")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     COOKIE_NAME: str = "access_token"

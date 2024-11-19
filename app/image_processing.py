@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 import io
 from uuid import uuid4
 from PIL import Image as PILImage, UnidentifiedImageError, ExifTags
@@ -52,7 +52,7 @@ async def process_and_save_image(
 
     # Generate a unique filename for storage
     filename = f"{uuid4().hex}_{user_id}.jpg"  # Save all files as JPEG for consistency
-    filepath = os.path.join(settings.UPLOAD_FOLDER, filename)
+    filepath = Path(settings.UPLOAD_FOLDER) / filename
 
     try:
         # Open the image

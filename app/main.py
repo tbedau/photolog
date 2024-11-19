@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -44,10 +45,11 @@ def create_app() -> FastAPI:
     app.add_middleware(AuthRedirectMiddleware)
 
     # Mount static files directory and verify security of the upload path
-    static_path = os.path.abspath("static")
-    uploads_path = os.path.abspath(settings.UPLOAD_FOLDER)
+    static_path = Path("static").resolve()
+    uploads_path = settings.UPLOAD_FOLDER.resolve()
 
-    if not uploads_path.startswith(static_path):
+    # Check if `uploads_path` is a subdirectory of `static_path`
+    if not uploads_path.is_relative_to(static_path):
         # Static files serve only HTML and static content
         app.mount(
             "/static", StaticFiles(directory=static_path, html=True), name="static"
