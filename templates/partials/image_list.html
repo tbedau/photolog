@@ -1,11 +1,16 @@
 {% for image in images %}
-<div class="image-log__container" 
-    {% if loop.last and next_page %}
-        hx-get="/load_images?page={{ next_page }}" 
-        hx-trigger="revealed" 
-        hx-swap="afterend"
-    {% endif %}>
-    <img src="/images/{{ image.filename }}" alt="Image" class="image-log__image">
-    <div class="image-log__overlay">{{ image.upload_date.strftime('%Y-%m-%d %H:%M:%S') }} UTC</div>
-</div>
+<figure class="photolog__item"
+        {% if loop.last and next_page %}
+            hx-get="/load_images?page={{ next_page }}"
+            hx-trigger="revealed"
+            hx-swap="afterend"
+        {% endif %}>
+        <img src="/images/{{ image.filename }}" 
+             alt=""
+             class="photolog__image"
+             onload="this.classList.add(this.naturalWidth > this.naturalHeight ? 'landscape' : 'portrait')">
+        <figcaption class="photolog__date">
+            {{ image.upload_date.strftime('%Y-%m-%d %H:%M:%S') }} UTC
+        </figcaption>
+    </figure>
 {% endfor %}
