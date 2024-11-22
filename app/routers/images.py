@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, Request, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
+from datetime import datetime, time
+import pytz
 
 from ..database import get_session
 from ..models import User, Image
@@ -68,6 +70,7 @@ async def upload_image(
 ):
     """
     Processes and saves an uploaded image, then stores its metadata in the database.
+    Checks if the user has reached the daily upload limit.
 
     Args:
         request: The HTTP request object.
@@ -78,11 +81,34 @@ async def upload_image(
     Returns:
         JSONResponse: Success response with redirect header or error message.
     """
+    tz = pytz.timezone(settings.TIMEZONE)
+    now = datetime.now(tz)
+
+    start_of_day = datetime.combine(now.date(), time.min, tzinfo=tz)
+    end_of_day = datetime.combine(now.date(), time.max, tzinfo=tz)
+
+    daily_upload_count = session.exec(
+        select(Image)
+        .where(Image.user_id == current_user.id)
+        .where(Image.upload_date >= start_of_day)
+        .where(Image.upload_date <= end_of_day)
+    ).all()
+
+    daily_upload_count = len(daily_upload_count)
+
+    if daily_upload_count >= settings.MAX_UPLOADS_PER_DAY:
+        return templates.TemplateResponse(
+            "partials/error_message.html",
+            {
+                "request": request,
+                "error_message": f"You have reached your daily upload limit of {settings.MAX_UPLOADS_PER_DAY} image(s).",
+            },
+            status_code=200,
+        )
+
     try:
-        # Process and save the image
         filename = await process_and_save_image(file, user_id=current_user.id)
 
-        # Save image metadata to the database
         image = Image(
             filename=filename, original_filename=file.filename, user_id=current_user.id
         )
@@ -92,14 +118,12 @@ async def upload_image(
         return JSONResponse(content={"success": True}, headers={"HX-Redirect": "/"})
 
     except HTTPException as e:
-        # Return an error message if HTTPException occurs
         return templates.TemplateResponse(
             "partials/error_message.html",
             {"request": request, "error_message": e.detail},
             status_code=200,
         )
     except Exception as e:
-        # Handle unexpected exceptions
         return templates.TemplateResponse(
             "partials/error_message.html",
             {"request": request, "error_message": f"An unexpected error occurred: {e}"},
