@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     IMAGES_PER_PAGE: int = 10
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10 MB
     MAX_DIMENSION: int = 1600
-    MAX_UPLOADS_PER_DAY: int = 3
+    MAX_UPLOADS_PER_DAY: int = 1
     TIMEZONE: str = "Europe/Berlin"
     UPLOAD_FOLDER: Path = BASE_DIR / "uploads"
 
