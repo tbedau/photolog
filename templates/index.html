@@ -11,8 +11,7 @@
         {% endif %}>
         <img src="/images/{{ image.filename }}" 
              alt=""
-             class="photolog__image"
-             onload="this.classList.add(this.naturalWidth > this.naturalHeight ? 'landscape' : 'portrait')">
+             class="photolog__image">
         <figcaption class="photolog__date">
             {{ image.upload_date.strftime('%Y-%m-%d %H:%M:%S') }} UTC
         </figcaption>

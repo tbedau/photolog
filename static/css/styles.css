@@ -55,19 +55,9 @@ body, .container {
     display: block;
     max-width: 100%;
     box-sizing: border-box;
-}
-
-/* Landscape and Portrait Image Sizes */
-.photolog__image.landscape {
-    width: 700px;
-    max-width: 100%;
     height: auto;
-}
-
-.photolog__image.portrait {
-    height: 700px;
-    max-height: 100vh;
-    width: auto;
+    object-fit: cover;
+    max-height: 700px;
 }
 
 /* Hover Effects */
