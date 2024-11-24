@@ -19,7 +19,7 @@ I am running an instance of Photolog at [https://photolog.tillmannbedau.de](http
     SECRET_KEY=your-secret-key
     ```
 
-3. **Create a User:** Run the following command to create an initial user. You will be prompted to set a password:
+3. **Create a User:** Make sure you have [uv installed](https://docs.astral.sh/uv/getting-started/installation/). Then run the following command to create an initial user. You will be prompted to set a password:
 
     ```sh
     uv run cli.py create-user <USERNAME>
