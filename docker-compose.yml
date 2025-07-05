@@ -9,7 +9,7 @@ services:
       - "8000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.photolog.rule=Host(`photolog.tillmannbedau.de`) || Host(`photolog.tillbedau.de`)"
+      - "traefik.http.routers.photolog.rule=Host(`photolog.tillmannbedau.com`)"
       - "traefik.http.routers.photolog.entrypoints=websecure"
       - "traefik.http.routers.photolog.tls.certresolver=letsencrypt"
     volumes:
