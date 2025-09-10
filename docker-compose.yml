@@ -11,7 +11,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.photolog.rule=Host(`photolog.tillmannbedau.com`)"
       - "traefik.http.routers.photolog.entrypoints=websecure"
-      - "traefik.http.routers.photolog.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.photolog.tls.certresolver=cloudflare"
     volumes:
       - "./uploads:/app/uploads"
       - "./data:/app/data"
