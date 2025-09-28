@@ -28,4 +28,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync
 
 # Command to run the application
-CMD ["fastapi", "run", "--workers", "4", "--host", "0.0.0.0", "--port", "8000", "app/main.py"]
+CMD ["fastapi", "run", "--workers", "2", "--host", "0.0.0.0", "--port", "8000", "app/main.py"]
