@@ -42,7 +42,7 @@ async def index(request: Request, session: Session = Depends(get_session)):
     next_page = page + 1 if more_images_available else None
 
     return templates.TemplateResponse(
-        "index.html", {"request": request, "images": images, "next_page": next_page}
+        request, "index.html", {"images": images, "next_page": next_page}
     )
 
 
@@ -58,7 +58,7 @@ async def upload_page(request: Request, current_user: User = Depends(get_current
     Returns:
         TemplateResponse: The upload page.
     """
-    return templates.TemplateResponse("upload.html", {"request": request})
+    return templates.TemplateResponse(request, "upload.html")
 
 
 @router.post("/upload")
@@ -98,9 +98,9 @@ async def upload_image(
 
     if daily_upload_count >= settings.MAX_UPLOADS_PER_DAY:
         return templates.TemplateResponse(
+            request,
             "partials/error_message.html",
             {
-                "request": request,
                 "error_message": f"You have reached your daily upload limit of {settings.MAX_UPLOADS_PER_DAY} image(s).",
             },
             status_code=200,
@@ -119,14 +119,16 @@ async def upload_image(
 
     except HTTPException as e:
         return templates.TemplateResponse(
+            request,
             "partials/error_message.html",
-            {"request": request, "error_message": e.detail},
+            {"error_message": e.detail},
             status_code=200,
         )
     except Exception as e:
         return templates.TemplateResponse(
+            request,
             "partials/error_message.html",
-            {"request": request, "error_message": f"An unexpected error occurred: {e}"},
+            {"error_message": f"An unexpected error occurred: {e}"},
             status_code=200,
         )
 
@@ -158,8 +160,9 @@ async def load_images(
     next_page = page + 1 if more_images_available else None
 
     return templates.TemplateResponse(
+        request,
         "partials/image_list.html",
-        {"request": request, "images": images, "next_page": next_page},
+        {"images": images, "next_page": next_page},
     )
 
 

@@ -37,7 +37,7 @@ async def login_page(request: Request, session: Session = Depends(get_session)):
                 )
         except HTTPException:
             pass  # Ignore errors and proceed to login page
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 
 @router.post("/token")
@@ -64,8 +64,9 @@ async def login(
     if not user:
         # Render error message if authentication fails
         return templates.TemplateResponse(
+            request,
             "partials/error_message.html",
-            {"request": request, "error_message": "Incorrect username or password"},
+            {"error_message": "Incorrect username or password"},
             status_code=200,
         )
 
