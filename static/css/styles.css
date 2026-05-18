@@ -129,7 +129,8 @@ body.is-past-cover .header-side:hover {
 body.ui-hidden .mark,
 body.ui-hidden .header-side,
 body.ui-hidden .slide__caption,
-body.ui-hidden .detail-nav {
+body.ui-hidden .detail-nav,
+body.ui-hidden .feed-end {
   opacity: 0;
   pointer-events: none;
 }
@@ -256,6 +257,32 @@ body.ui-hidden .detail-nav {
 }
 
 .detail-nav__link:hover {
+  color: var(--fg);
+}
+
+/* Subtle archive cue tucked beneath the last photo. `scroll-snap-align: end`
+   sticks it to the bottom of the viewport so the last image stays mostly
+   visible above it instead of being scrolled off — the cue reveals itself as
+   a quiet footer rather than another full screen of content. */
+.feed-end {
+  height: 18vh;
+  height: 18dvh;
+  scroll-snap-align: end;
+  display: grid;
+  place-items: center;
+  transition: opacity 0.25s ease;
+}
+
+.feed-end__link {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: #888;
+  text-decoration: none;
+  transition: color 0.25s ease;
+}
+
+.feed-end__link:hover {
   color: var(--fg);
 }
 
