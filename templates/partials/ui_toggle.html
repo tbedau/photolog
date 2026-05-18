@@ -1,0 +1,16 @@
+<script>
+    (() => {
+        const STORE = 'photolog-ui-hidden';
+        if (sessionStorage.getItem(STORE) === '1') {
+            document.body.classList.add('ui-hidden');
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.target.closest && e.target.closest('input, textarea')) return;
+            if (e.key !== 'h' && e.key !== 'H') return;
+            e.preventDefault();
+            const hidden = document.body.classList.toggle('ui-hidden');
+            sessionStorage.setItem(STORE, hidden ? '1' : '0');
+        });
+    })();
+</script>

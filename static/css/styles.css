@@ -63,7 +63,7 @@ body {
   font-size: 17px;
   font-weight: 500;
   letter-spacing: -0.005em;
-  transition: transform 0.5s ease, color 0.25s ease;
+  transition: transform 0.5s ease, color 0.25s ease, opacity 0.25s ease;
 }
 
 .header-side {
@@ -75,7 +75,7 @@ body {
   color: #888;
   text-decoration: none;
   z-index: 10;
-  transition: transform 0.5s ease, color 0.25s ease;
+  transition: transform 0.5s ease, color 0.25s ease, opacity 0.25s ease;
 }
 
 .header-side:hover {
@@ -120,6 +120,23 @@ body.is-past-cover .header-side {
 body.is-past-cover .mark:hover,
 body.is-past-cover .header-side:hover {
   color: #555;
+}
+
+/* Hidden-feature "chrome off" mode: press `h` on the feed or a permalink to
+   fade every piece of UI except the photos themselves. State is held in
+   sessionStorage so it persists across feed ↔ detail navigation. Archive is
+   intentionally out of scope (the page is already chrome-light by design). */
+body.ui-hidden .mark,
+body.ui-hidden .header-side,
+body.ui-hidden .slide__caption,
+body.ui-hidden .detail-nav {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.slide__caption,
+.detail-nav {
+  transition: opacity 0.25s ease;
 }
 
 /* ---------- Feed (front page) ---------- */

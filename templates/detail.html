@@ -32,6 +32,8 @@
     <figcaption class="slide__caption">{{ image.upload_date.strftime('%d %B %Y') }}</figcaption>
 </section>
 
+{% include "partials/ui_toggle.html" %}
+
 {% if prev or next %}
 <nav class="detail-nav">
     {% if prev %}
