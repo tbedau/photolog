@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Image and Upload settings
     FRONTPAGE_PHOTO_COUNT: int = 30
     MAX_FILE_SIZE: int = 15 * 1024 * 1024  # 15 MB
-    MAX_DIMENSION: int = 2560
+    MAX_DIMENSION: int = 3200
     MAX_UPLOADS_PER_DAY: int = 1
     TIMEZONE: str = "Europe/Berlin"
     UPLOAD_FOLDER: Path = BASE_DIR / "uploads"

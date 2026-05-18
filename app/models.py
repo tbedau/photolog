@@ -25,12 +25,16 @@ class Image(SQLModel, table=True):
     """
     Represents an image uploaded by a user.
 
-    Attributes:
-        id (int): The primary key for the image.
-        filename (str): Internal filename of the stored image.
-        original_filename (str): Original filename of the uploaded image.
-        upload_date (datetime): Timestamp of when the image was uploaded.
-        user_id (int): Foreign key referencing the user who uploaded the image.
+    `filename` is the UUID hex that names the per-image storage directory.
+    Derivatives live at `uploads/{filename}/{spec}.{ext}` where spec is a width
+    like "1280" or "original".
+
+    `width`/`height` are the dimensions of the largest derivative (post EXIF
+    orientation, post downscale). They drive the `<img>` aspect ratio and the
+    `sizes`/`srcset` selection so the layout never shifts while loading.
+
+    `dominant_color` is a #rrggbb hex string used as the `<img>` background so
+    the page paints in the photo's tonal range before any pixel arrives.
     """
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -38,6 +42,10 @@ class Image(SQLModel, table=True):
     original_filename: str = Field(nullable=False)
     upload_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     user_id: int = Field(foreign_key="user.id", nullable=False)
+
+    width: Optional[int] = Field(default=None)
+    height: Optional[int] = Field(default=None)
+    dominant_color: Optional[str] = Field(default=None, max_length=7)
 
     # Relationship to the User model
     user: "User" = Relationship(back_populates="images")

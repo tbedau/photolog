@@ -1,19 +1,76 @@
-from fastapi import APIRouter, Depends, Request, File, UploadFile, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+import re
+from datetime import date as date_cls, datetime, time, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+)
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
-from datetime import date as date_cls, datetime, time, timedelta
 import pytz
 
-from ..database import get_session
-from ..models import User, Image
-from ..security import get_current_user
 from ..config import get_settings
-from ..image_processing import process_and_save_image
+from ..database import get_session
+from ..image_processing import (
+    AVIF_WIDTHS,
+    JPEG_WIDTHS,
+    process_and_save_image,
+)
+from ..models import Image, User
+from ..security import get_current_user
 
 settings = get_settings()
 router = APIRouter(tags=["images"])
 templates = Jinja2Templates(directory="templates")
+
+
+# Storage ids are 32-char hex UUIDs. Anything else is path traversal bait, or a
+# leftover from the pre-migration flat layout — both 404.
+_STORAGE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+# Derivative specs are bare width digits or the literal "original".
+_SPEC_RE = re.compile(r"^(\d{2,4}|original)$")
+
+# Long, immutable: storage paths embed an irreversible UUID, so a fresh URL is
+# always issued when content changes. One year is the spec's effective max.
+_IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
+
+
+def _picture_data(image: Image) -> dict:
+    """Build the srcset/sizes/dimensions payload for one `<picture>` element.
+
+    Centralising this means the template stays declarative — it just spreads the
+    dict onto attributes — and the front-end and back-end can't drift on which
+    widths actually exist on disk for any given image.
+    """
+
+    max_w = image.width or max(AVIF_WIDTHS)
+    avif_widths = sorted({min(w, max_w) for w in AVIF_WIDTHS})
+    jpeg_widths = sorted({min(w, max_w) for w in JPEG_WIDTHS})
+
+    storage_id = image.filename
+
+    def srcset(widths: list[int], ext: str) -> str:
+        return ", ".join(f"/i/{storage_id}/{w}.{ext} {w}w" for w in widths)
+
+    # `src` is only the last-resort fallback (every modern browser actually
+    # picks from `srcset`). Bias to the smaller JPEG so a hypothetical
+    # srcset-less client downloads less, not more.
+    fallback_w = jpeg_widths[0] if jpeg_widths else max_w
+    return {
+        "avif_srcset": srcset(avif_widths, "avif"),
+        "jpeg_srcset": srcset(jpeg_widths, "jpg"),
+        "fallback_src": f"/i/{storage_id}/{fallback_w}.jpg",
+        "width": image.width or 0,
+        "height": image.height or 0,
+        "dominant_color": image.dominant_color or "#1a1a1a",
+    }
+
+
+templates.env.filters["picture"] = _picture_data
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -25,17 +82,13 @@ async def index(request: Request, session: Session = Depends(get_session)):
         .limit(settings.FRONTPAGE_PHOTO_COUNT)
     ).all()
 
-    return templates.TemplateResponse(
-        request, "index.html", {"images": images}
-    )
+    return templates.TemplateResponse(request, "index.html", {"images": images})
 
 
 @router.get("/archive", response_class=HTMLResponse)
 async def archive(request: Request, session: Session = Depends(get_session)):
     """Archive: every photo, grouped by month, newest first."""
-    images = session.exec(
-        select(Image).order_by(Image.upload_date.desc())
-    ).all()
+    images = session.exec(select(Image).order_by(Image.upload_date.desc())).all()
 
     months: list[dict] = []
     for image in images:
@@ -50,9 +103,7 @@ async def archive(request: Request, session: Session = Depends(get_session)):
             )
         months[-1]["images"].append(image)
 
-    return templates.TemplateResponse(
-        request, "archive.html", {"months": months}
-    )
+    return templates.TemplateResponse(request, "archive.html", {"months": months})
 
 
 @router.get("/{year:int}/{month:int}/{day:int}", response_class=HTMLResponse)
@@ -141,10 +192,15 @@ async def upload_image(
         )
 
     try:
-        filename = await process_and_save_image(file, user_id=current_user.id)
+        processed = await process_and_save_image(file, user_id=current_user.id)
 
         image = Image(
-            filename=filename, original_filename=file.filename, user_id=current_user.id
+            filename=processed.storage_id,
+            original_filename=file.filename,
+            user_id=current_user.id,
+            width=processed.width,
+            height=processed.height,
+            dominant_color=processed.dominant_color,
         )
         session.add(image)
         session.commit()
@@ -167,24 +223,69 @@ async def upload_image(
         )
 
 
-@router.get("/images/{filename}")
-async def get_image(filename: str, session: Session = Depends(get_session)):
-    """Serve a stored image file by filename."""
-    # Guard against path traversal
-    if ".." in filename or "/" in filename:
-        raise HTTPException(status_code=404, detail="Image not found")
+@router.get("/i/{storage_id}/{spec}.{ext}")
+async def get_derivative(
+    storage_id: str,
+    spec: str,
+    ext: str,
+    session: Session = Depends(get_session),
+):
+    """Serve one derivative of a stored image.
 
-    image = session.exec(select(Image).where(Image.filename == filename)).first()
+    URL shape: ``/i/{32-hex}/{width|original}.{avif|jpg}``. The path is the only
+    way to address a file — the DB just records which storage id belongs to which
+    `Image` row, so traversal is impossible even if the regex check is wrong.
+    """
+    if not _STORAGE_ID_RE.match(storage_id) or not _SPEC_RE.match(spec):
+        raise HTTPException(status_code=404)
+    if ext not in {"avif", "jpg"}:
+        raise HTTPException(status_code=404)
+
+    image = session.exec(select(Image).where(Image.filename == storage_id)).first()
     if not image:
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise HTTPException(status_code=404)
 
-    file_path = settings.UPLOAD_FOLDER / filename
+    file_path = settings.UPLOAD_FOLDER / storage_id / f"{spec}.{ext}"
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Image file not found")
+        raise HTTPException(status_code=404)
 
+    media_type = "image/avif" if ext == "avif" else "image/jpeg"
     return FileResponse(
         file_path,
-        media_type="image/jpeg",
-        filename=image.filename,
-        headers={"Content-Disposition": "inline"},
+        media_type=media_type,
+        headers={
+            "Cache-Control": _IMMUTABLE_CACHE,
+            "Content-Disposition": "inline",
+        },
+    )
+
+
+@router.get("/images/{filename}")
+async def get_legacy_image(
+    filename: str, session: Session = Depends(get_session)
+) -> RedirectResponse:
+    """301 the pre-migration flat URLs onto a canonical derivative.
+
+    Old shape was `{uuid}_{user_id}.jpg`. We pull the uuid prefix, look up the
+    row, and redirect to a sensible mid-tier JPEG — clients with an old link
+    cached in their history still resolve, search engines see one source of
+    truth, and we keep no flat-layout serving code around.
+    """
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=404)
+
+    storage_id = filename.split("_", 1)[0].removesuffix(".jpg")
+    if not _STORAGE_ID_RE.match(storage_id):
+        raise HTTPException(status_code=404)
+
+    image: Optional[Image] = session.exec(
+        select(Image).where(Image.filename == storage_id)
+    ).first()
+    if not image:
+        raise HTTPException(status_code=404)
+
+    fallback_w = min(JPEG_WIDTHS[-1], image.width or JPEG_WIDTHS[-1])
+    return RedirectResponse(
+        url=f"/i/{storage_id}/{fallback_w}.jpg",
+        status_code=301,
     )
