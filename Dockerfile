@@ -1,5 +1,5 @@
 # Base image
-FROM python:3.10-slim as base
+FROM python:3.13-slim AS base
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app"
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.5.2 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.14 /uv /uvx /bin/
 
 # Working directory
 WORKDIR /app
