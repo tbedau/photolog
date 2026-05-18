@@ -45,7 +45,7 @@
     </section>
 </main>
 
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
     (() => {
         const feed = document.getElementById('feed');
         const slides = Array.from(feed.querySelectorAll('.slide'));

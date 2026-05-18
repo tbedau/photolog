@@ -1,4 +1,4 @@
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
     (() => {
         const STORE = 'photolog-ui-hidden';
         if (sessionStorage.getItem(STORE) === '1') {

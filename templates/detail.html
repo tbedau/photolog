@@ -52,7 +52,7 @@
     {% else %}<span></span>{% endif %}
 </nav>
 
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
     (() => {
         document.addEventListener('keydown', (e) => {
             {% if prev %}if (e.key === 'ArrowLeft') { e.preventDefault(); location.href = '{{ prev.upload_date.strftime("/%Y/%m/%d") }}'; }{% endif %}

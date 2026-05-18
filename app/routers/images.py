@@ -1,8 +1,11 @@
+import logging
 import re
 from datetime import date as date_cls, datetime, time, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -214,11 +217,12 @@ async def upload_image(
             {"error_message": e.detail},
             status_code=200,
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("upload_failed user_id=%s", current_user.id)
         return templates.TemplateResponse(
             request,
             "partials/error_message.html",
-            {"error_message": f"An unexpected error occurred: {e}"},
+            {"error_message": "An unexpected error occurred while processing the image."},
             status_code=200,
         )
 

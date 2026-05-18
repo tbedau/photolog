@@ -6,12 +6,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.115.3",
-    "passlib[bcrypt]>=1.7.4",
     "pillow>=11.0.0",
+    "pwdlib[argon2,bcrypt]>=0.2.1",
     "pydantic-settings>=2.6.0",
     "pyjwt>=2.9.0",
-    "python-jose>=3.3.0",
     "pytz>=2024.2",
+    "slowapi>=0.1.9",
     "sqlmodel>=0.0.22",
     "trio>=0.27.0",
     "typer>=0.12.5",

@@ -3,7 +3,8 @@
 {% block title %}Upload — Photolog{% endblock %}
 
 {% block head_extra %}
-<script src="/static/js/htmx-2.0.3.min.js" defer></script>
+<script src="/static/js/htmx-2.0.3.min.js" nonce="{{ request.state.csp_nonce }}" defer></script>
+<script src="/static/js/upload-dropzone.js" nonce="{{ request.state.csp_nonce }}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -12,45 +13,14 @@
         <p class="auth__drop-text">Drag &amp; drop or</p>
         <form id="upload-form" hx-encoding="multipart/form-data" hx-post="/upload" hx-target="#error-container">
             <input type="file" id="file-input" name="file" accept=".jpg,.jpeg,.png,.tiff" required hidden>
-            <button type="button" class="auth__button" onclick="document.getElementById('file-input').click();">Select</button>
+            <button type="button" class="auth__button">Select</button>
         </form>
     </div>
 
     <div id="error-container" class="error-container"></div>
 
-    <p class="auth__footer"><a href="/logout">Log out</a></p>
+    <form method="POST" action="/logout" class="auth__footer">
+        <button type="submit" class="auth__link-button">Log out</button>
+    </form>
 </div>
-
-<script>
-    (() => {
-        const dropArea = document.getElementById('drop-area');
-        const fileInput = document.getElementById('file-input');
-        const form = document.getElementById('upload-form');
-
-        dropArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropArea.classList.add('auth__drop--dragging');
-        });
-
-        dropArea.addEventListener('dragleave', () => {
-            dropArea.classList.remove('auth__drop--dragging');
-        });
-
-        dropArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropArea.classList.remove('auth__drop--dragging');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                fileInput.files = files;
-                form.requestSubmit();
-            }
-        });
-
-        fileInput.addEventListener('change', () => {
-            if (fileInput.files.length > 0) {
-                form.requestSubmit();
-            }
-        });
-    })();
-</script>
 {% endblock %}

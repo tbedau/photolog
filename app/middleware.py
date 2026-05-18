@@ -1,49 +1,75 @@
+import secrets
+
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .config import get_settings
+
+_settings = get_settings()
+
+
+# 2 years; clients that have seen this once won't downgrade in that window.
+_HSTS = "max-age=63072000; includeSubDomains"
+
+
+def _csp(nonce: str) -> str:
+    # No 'unsafe-inline' anywhere on scripts: each inline `<script>` must carry
+    # the request's nonce. `style-src-attr 'unsafe-inline'` is the narrow
+    # exception that keeps per-image dominant-colour `style="--dom:#…"` working
+    # without re-enabling inline `<style>` blocks.
+    return (
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self'; "
+        "style-src-attr 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'; "
+        "base-uri 'none'; "
+        "object-src 'none'"
+    )
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Middleware to add security-related headers to each response."""
+    """Generate a per-request CSP nonce and apply security headers."""
 
     async def dispatch(self, request: Request, call_next):
-        # Skip adding security headers for Swagger UI and OpenAPI routes
-        if request.url.path in ["/docs", "/openapi.json"]:
-            return await call_next(request)
+        # Set the nonce *before* the handler runs so templates can read it.
+        nonce = secrets.token_urlsafe(16)
+        request.state.csp_nonce = nonce
+
+        skip = request.url.path in {"/docs", "/redoc", "/openapi.json"}
 
         response = await call_next(request)
+        if skip:
+            return response
 
-        # Security headers for enhanced security
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        # Content Security Policy (CSP)
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "img-src 'self' data:; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none'; "
-            "form-action 'self'; "
-            "base-uri 'self';"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = (
+            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
+            "magnetometer=(), microphone=(), payment=(), usb=()"
         )
+        response.headers["Content-Security-Policy"] = _csp(nonce)
+
+        # HSTS is meaningless over HTTP, and browsers ignore it anyway.
+        if _settings.cookie_secure:
+            response.headers["Strict-Transport-Security"] = _HSTS
 
         return response
 
 
 class AuthRedirectMiddleware(BaseHTTPMiddleware):
-    """Middleware to redirect unauthorized users to the login page if accessing HTML content."""
+    """When a browser hits a 401, send them to /login instead of a JSON error."""
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
 
-        # Redirect to login if unauthorized and HTML content is requested
         if response.status_code == 401 and "text/html" in request.headers.get(
             "accept", ""
         ):

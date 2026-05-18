@@ -33,6 +33,14 @@
   --fg-mute: #999;
   --fg-soft: #b0b0b0;
   --bg: #fff;
+  /* Mellow button tones — kept distinctly off-black so the auth chrome
+     doesn't compete with the photos. */
+  --btn: #2c2c2e;
+  --btn-hover: #3d3d40;
+  /* Soft borders for inputs / drop zone. */
+  --line: #e5e5e5;
+  --line-strong: #c8c8c8;
+  --radius: 8px;
 }
 
 * {
@@ -381,13 +389,15 @@ body.ui-hidden .feed-end {
 /* ---------- Auth pages (login / upload) ---------- */
 
 .auth {
+  /* Anchor content around the visual upper-third (rule-of-thirds), shared by
+     login and upload so they don't shift between routes. */
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 6rem 1.5rem 3rem;
+  justify-content: flex-start;
+  padding: 25vh 1.5rem 3rem;
 }
 
 .auth__form {
@@ -400,15 +410,17 @@ body.ui-hidden .feed-end {
 
 .auth__input {
   width: 100%;
-  padding: 0.75rem 0;
-  border: 0;
-  border-bottom: 1px solid #ddd;
-  background: transparent;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
   font: inherit;
-  font-size: 15px;
+  /* 16px is the iOS Safari threshold: anything smaller triggers an auto-zoom
+     on focus that the user then has to pinch back out of. */
+  font-size: 16px;
   color: var(--fg);
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   font-family: "Ronzino", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
@@ -417,34 +429,36 @@ body.ui-hidden .feed-end {
 }
 
 .auth__input:focus {
-  border-bottom-color: var(--fg);
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.04);
 }
 
 .auth__button {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  background: var(--fg);
+  margin-top: 0.75rem;
+  padding: 0.8rem 1rem;
+  background: var(--btn);
   color: #fff;
   border: 0;
+  border-radius: var(--radius);
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: -0.005em;
   cursor: pointer;
   transition: background-color 0.2s ease;
   font-family: "Ronzino", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .auth__button:hover {
-  background: #333;
+  background: var(--btn-hover);
 }
 
 .auth__drop {
   width: 100%;
   max-width: 420px;
   padding: 3.5rem 1.5rem;
-  border: 1px dashed #ccc;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s ease, background-color 0.2s ease;
@@ -464,19 +478,32 @@ body.ui-hidden .feed-end {
 
 .auth__footer {
   margin-top: 2.5rem;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-mute);
 }
 
-.auth__footer a {
-  color: var(--fg-mute);
+/* Footer link / button: matched to the header-side link aesthetic — same
+   size, weight, tracking, and #888 → fg hover transition. */
+.auth__footer a,
+.auth__link-button {
+  /* Padding + matching negative margin keeps the visual position identical
+     while expanding the tap target to ~44px (Apple's HIG minimum). */
+  display: inline-block;
+  background: none;
+  border: 0;
+  padding: 0.65rem 0.75rem;
+  margin: -0.65rem -0.75rem;
+  font: inherit;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: #888;
+  cursor: pointer;
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color 0.25s ease;
 }
 
-.auth__footer a:hover {
+.auth__footer a:hover,
+.auth__link-button:hover {
   color: var(--fg);
 }
 

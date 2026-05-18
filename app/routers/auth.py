@@ -1,68 +1,82 @@
 from datetime import timedelta
+import logging
+
 from fastapi import APIRouter, Depends, Request, Response, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlmodel import Session
 
 from ..database import get_session
 from ..security import authenticate_user, create_access_token, get_current_user
 from ..config import get_settings
 
-# Load settings and configure router and templates
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
 router = APIRouter(tags=["authentication"])
 templates = Jinja2Templates(directory="templates")
 
+# Per-IP brute-force brake. Argon2id is already slow, but a hard ceiling keeps
+# a determined attacker from saturating CPU on the only password endpoint.
+limiter = Limiter(key_func=get_remote_address)
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=settings.cookie_name,
+        value=token,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="strict",
+        path="/",
+    )
+
+
+def _clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.cookie_name,
+        path="/",
+        secure=settings.cookie_secure,
+        httponly=True,
+        samesite="strict",
+    )
+
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, session: Session = Depends(get_session)):
-    """
-    Renders the login page or redirects to the upload page if the user is already authenticated.
-
-    Args:
-        request: The HTTP request object.
-        session: Database session dependency.
-
-    Returns:
-        TemplateResponse: Login page if user is not authenticated.
-        RedirectResponse: Redirect to upload page if already authenticated.
-    """
-    if request.cookies.get(settings.COOKIE_NAME):
+    """Render the login form, or bounce to /upload if a valid session is present."""
+    if request.cookies.get(settings.cookie_name):
         try:
-            current_user = await get_current_user(request=request, session=session)
-            if current_user:
+            if await get_current_user(request=request, session=session):
                 return RedirectResponse(
                     url="/upload", status_code=status.HTTP_302_FOUND
                 )
         except HTTPException:
-            pass  # Ignore errors and proceed to login page
+            pass
     return templates.TemplateResponse(request, "login.html")
 
 
 @router.post("/token")
+@limiter.limit("5/minute")
 async def login(
     request: Request,
-    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_session),
 ):
-    """
-    Authenticates the user and returns a JSON response with a redirect header.
-
-    Args:
-        request: The HTTP request object.
-        response: The HTTP response object.
-        form_data: The OAuth2 password request form containing user credentials.
-        session: Database session dependency.
-
-    Returns:
-        JSONResponse: Response indicating success or failure, with a redirect header on success.
-    """
-    # Authenticate the user
+    """Verify credentials, issue a JWT, set it as a hardened cookie."""
     user = authenticate_user(form_data.username, form_data.password, session)
     if not user:
-        # Render error message if authentication fails
+        logger.warning(
+            "login_failed username=%s ip=%s",
+            form_data.username,
+            get_remote_address(request),
+        )
+        # 200 is required by the htmx swap. Generic message — no user-existence
+        # distinction, no internal detail.
         return templates.TemplateResponse(
             request,
             "partials/error_message.html",
@@ -70,34 +84,21 @@ async def login(
             status_code=200,
         )
 
-    # Create access token and set expiration
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    logger.info("login_success username=%s", user.username)
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.username},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-
-    # Set token as an HTTP-only cookie
     response = JSONResponse(
         content={"success": True}, headers={"HX-Redirect": "/upload"}
     )
-    response.set_cookie(
-        key=settings.COOKIE_NAME,
-        value=access_token,
-        httponly=True,
-        secure=True,  # Ensure cookie is secure in production (HTTPS only)
-        samesite="Strict",  # Prevent CSRF
-    )
+    _set_auth_cookie(response, access_token)
     return response
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout():
-    """
-    Logs the user out by deleting the authentication cookie and redirecting to the home page.
-
-    Returns:
-        RedirectResponse: Redirects to the home page after logout.
-    """
-    response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    response.delete_cookie(settings.COOKIE_NAME)
+    """POST-only logout — GET would let prefetchers and crawlers sign people out."""
+    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    _clear_auth_cookie(response)
     return response
