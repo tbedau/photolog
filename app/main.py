@@ -39,8 +39,7 @@ def create_app() -> FastAPI:
     origins = [
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        "https://photolog.tillmannbedau.de",
-        "https://photolog.tillbedau.de",
+        "https://photolog.tillmannbedau.com",
     ]
 
     app.add_middleware(
