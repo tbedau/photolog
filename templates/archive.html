@@ -9,8 +9,26 @@
         <h2 class="archive__label">{{ month.label }}</h2>
         <div class="archive__grid">
             {% for image in month.images %}
-            <a class="thumb" href="{{ image.upload_date.strftime('/%Y/%m/%d') }}">
-                <img src="/images/{{ image.filename }}" alt="" loading="lazy" decoding="async">
+            {% set p = image | picture %}
+            <a class="thumb"
+               href="{{ image.upload_date.strftime('/%Y/%m/%d') }}">
+                <picture>
+                    {# `sizes` mirrors the CSS column-count breakpoints in
+                       styles.css. With a 1500px max container, 5 columns at full
+                       width works out to ~280px per thumb (× DPR). #}
+                    <source type="image/avif"
+                            srcset="{{ p.avif_srcset }}"
+                            sizes="(min-width: 1100px) 20vw, (min-width: 800px) 25vw, (min-width: 520px) 33vw, 50vw">
+                    <img src="{{ p.fallback_src }}"
+                         srcset="{{ p.jpeg_srcset }}"
+                         sizes="(min-width: 1100px) 20vw, (min-width: 800px) 25vw, (min-width: 520px) 33vw, 50vw"
+                         width="{{ p.width }}"
+                         height="{{ p.height }}"
+                         alt=""
+                         loading="lazy"
+                         decoding="async"
+                         style="--dom:{{ p.dominant_color }}">
+                </picture>
                 <time class="thumb__date" datetime="{{ image.upload_date.strftime('%Y-%m-%d') }}">{{ image.upload_date.strftime('%d %b') }}</time>
             </a>
             {% endfor %}

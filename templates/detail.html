@@ -2,10 +2,32 @@
 
 {% block title %}{{ image.upload_date.strftime('%d %B %Y') }} — Tillmann Bedau — Photolog{% endblock %}
 
+{% block head_extra %}
+{% set p = image | picture %}
+<link rel="preload" as="image"
+      imagesrcset="{{ p.avif_srcset }}"
+      imagesizes="100vw"
+      type="image/avif"
+      fetchpriority="high">
+{% endblock %}
+
 {% block content %}
+{% set p = image | picture %}
 <section class="slide slide--detail">
     <div class="slide__frame">
-        <img class="slide__img" src="/images/{{ image.filename }}" alt="" decoding="async">
+        <picture>
+            <source type="image/avif" srcset="{{ p.avif_srcset }}" sizes="100vw">
+            <img class="slide__img"
+                 src="{{ p.fallback_src }}"
+                 srcset="{{ p.jpeg_srcset }}"
+                 sizes="100vw"
+                 width="{{ p.width }}"
+                 height="{{ p.height }}"
+                 alt=""
+                 fetchpriority="high"
+                 decoding="async"
+                 style="--dom:{{ p.dominant_color }}">
+        </picture>
     </div>
     <figcaption class="slide__caption">{{ image.upload_date.strftime('%d %B %Y') }}</figcaption>
 </section>

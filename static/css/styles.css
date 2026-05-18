@@ -150,6 +150,21 @@ body.is-past-cover .header-side:hover {
   width: 100%;
   height: 100%;
   min-height: 0;
+  /* The feed slides now wrap the photo in <a> so a click opens the permalink.
+     Strip the default underline + colour so the only visible thing is the photo. */
+  color: inherit;
+  text-decoration: none;
+}
+
+/* `<picture>` is a layout-less wrapper around `<img>` — source selection happens
+   in the HTML parser, not in CSS. Taking it out of the box tree lets the img
+   inherit the flex constraints directly from .slide__frame, the way it did
+   before the picture was introduced. Without this the picture's intrinsic
+   height is whatever the img would render at full size, which collapses
+   max-height: 100% into a no-op. */
+.slide__frame picture,
+.thumb picture {
+  display: contents;
 }
 
 .slide__img {
@@ -159,6 +174,33 @@ body.is-past-cover .header-side:hover {
   width: auto;
   height: auto;
   object-fit: contain;
+}
+
+/* Placeholder background while pixels are decoding. The raw dominant colour is
+   too saturated to sit behind a still-loading image — mix it heavily toward
+   the page background so it reads as a hint of tone, not a coloured panel.
+   Bump or drop the centre percentage (and the breath endpoints below) to taste. */
+.slide__img,
+.thumb img {
+  background: color-mix(in srgb, var(--dom, #ddd) 18%, var(--bg));
+  animation: photo-loading 3.6s ease-in-out infinite;
+}
+
+/* The breath only matters while the image bytes haven't painted yet — once
+   they do, the image fully covers this background and the animation becomes
+   invisible. No JS hook needed to stop it. Keep the amplitude tight: a 3-point
+   swing on the mix ratio is right at the threshold of perception, which is
+   exactly what we want. Widen to 14%↔22% if you want it more noticeable. */
+@keyframes photo-loading {
+  0%, 100% { background: color-mix(in srgb, var(--dom, #ddd) 14%, var(--bg)); }
+  50%      { background: color-mix(in srgb, var(--dom, #ddd) 24%, var(--bg)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide__img,
+  .thumb img {
+    animation: none;
+  }
 }
 
 .slide__caption {

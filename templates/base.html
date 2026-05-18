@@ -13,6 +13,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="Photolog" />
     <link rel="manifest" href="/static/favicon/site.webmanifest" />
+    {% block head_extra %}{% endblock %}
 </head>
 <body{% block body_attrs %}{% endblock %}>
     {% block header %}{% include "partials/header.html" %}{% endblock %}
