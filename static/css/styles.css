@@ -521,6 +521,78 @@ body.ui-hidden .feed-end {
   letter-spacing: 0.02em;
 }
 
+/* Filename shown in place of the "Drag & drop or" prompt once a file is
+   chosen. Slightly stronger weight than the prompt so it reads as a status
+   line, but still sentence case and tight tracking. */
+.auth__drop-filename {
+  color: var(--fg);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  word-break: break-word;
+}
+
+/* Disable hover affordances once an upload is in flight so the zone stops
+   advertising itself as clickable. */
+.auth__drop[data-state="uploading"],
+.auth__drop[data-state="processing"],
+.auth__drop[data-state="done"] {
+  cursor: default;
+}
+
+/* Determinate-by-default progress bar. While bytes are flying the JS sets
+   `.upload-progress__fill { width: N% }`; once the request body is fully
+   delivered the JS swaps to indeterminate, which hides the fill and animates
+   a sliding segment instead. */
+.upload-progress {
+  margin-top: 1.25rem;
+}
+
+.upload-progress__track {
+  position: relative;
+  width: 100%;
+  height: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.upload-progress__fill {
+  height: 100%;
+  width: 0%;
+  background: var(--fg);
+  transition: width 150ms linear;
+}
+
+.upload-progress__track--indeterminate .upload-progress__fill {
+  display: none;
+}
+
+.upload-progress__track--indeterminate::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  left: -35%;
+  background: var(--fg);
+  animation: upload-progress-slide 1.15s ease-in-out infinite;
+}
+
+@keyframes upload-progress-slide {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.upload-progress__label {
+  margin: 0.75rem 0 0;
+  font-size: 13px;
+  color: var(--fg-mute);
+  letter-spacing: -0.005em;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 640px) {

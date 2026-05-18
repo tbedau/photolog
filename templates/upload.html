@@ -3,21 +3,29 @@
 {% block title %}Upload — Photolog{% endblock %}
 
 {% block head_extra %}
-<script src="/static/js/htmx-2.0.3.min.js" nonce="{{ request.state.csp_nonce }}" defer></script>
-<script src="/static/js/upload-dropzone.js" nonce="{{ request.state.csp_nonce }}" defer></script>
+<script src="/static/js/auth.js" nonce="{{ request.state.csp_nonce }}" defer></script>
 {% endblock %}
 
 {% block content %}
 <div class="auth">
-    <div id="drop-area" class="auth__drop">
-        <p class="auth__drop-text">Drag &amp; drop or</p>
-        <form id="upload-form" hx-encoding="multipart/form-data" hx-post="/upload" hx-target="#error-container">
-            <input type="file" id="file-input" name="file" accept=".jpg,.jpeg,.png,.tiff" required hidden>
-            <button type="button" class="auth__button">Select</button>
+    <div id="drop-area" class="auth__drop" data-state="idle">
+        <p class="auth__drop-text" data-role="prompt">Drag &amp; drop or</p>
+        <p class="auth__drop-text auth__drop-filename" data-role="filename" hidden></p>
+
+        <form id="upload-form" enctype="multipart/form-data" action="/upload" method="post">
+            <input type="file" id="file-input" name="file" accept=".jpg,.jpeg,.png,.tiff" hidden>
+            <button type="button" class="auth__button" data-role="select">Select</button>
         </form>
+
+        <div class="upload-progress" data-role="progress" hidden>
+            <div class="upload-progress__track" data-role="track">
+                <div class="upload-progress__fill" data-role="fill"></div>
+            </div>
+            <p class="upload-progress__label" data-role="status">Uploading…</p>
+        </div>
     </div>
 
-    <div id="error-container" class="error-container"></div>
+    <div id="error-container" class="error-container" aria-live="polite"></div>
 
     <form method="POST" action="/logout" class="auth__footer">
         <button type="submit" class="auth__link-button">Log out</button>

@@ -168,7 +168,12 @@ async def upload_image(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Process and save an uploaded image, enforcing the daily upload cap."""
+    """Process and save an uploaded image, enforcing the daily upload cap.
+
+    Returns a small JSON envelope consumed by ``static/js/auth.js`` — success
+    carries the post-upload redirect target, failure carries a human-readable
+    ``error`` string and the appropriate HTTP status.
+    """
     tz = pytz.timezone(settings.TIMEZONE)
     now = datetime.now(tz)
 
@@ -185,13 +190,11 @@ async def upload_image(
     )
 
     if daily_upload_count >= settings.MAX_UPLOADS_PER_DAY:
-        return templates.TemplateResponse(
-            request,
-            "partials/error_message.html",
-            {
-                "error_message": f"You have reached your daily upload limit of {settings.MAX_UPLOADS_PER_DAY} image(s).",
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": f"You have reached your daily upload limit of {settings.MAX_UPLOADS_PER_DAY} image(s)."
             },
-            status_code=200,
         )
 
     try:
@@ -208,22 +211,15 @@ async def upload_image(
         session.add(image)
         session.commit()
 
-        return JSONResponse(content={"success": True}, headers={"HX-Redirect": "/"})
+        return JSONResponse(content={"success": True, "redirect": "/"})
 
     except HTTPException as e:
-        return templates.TemplateResponse(
-            request,
-            "partials/error_message.html",
-            {"error_message": e.detail},
-            status_code=200,
-        )
+        return JSONResponse(status_code=e.status_code, content={"error": e.detail})
     except Exception:
         logger.exception("upload_failed user_id=%s", current_user.id)
-        return templates.TemplateResponse(
-            request,
-            "partials/error_message.html",
-            {"error_message": "An unexpected error occurred while processing the image."},
-            status_code=200,
+        return JSONResponse(
+            status_code=500,
+            content={"error": "An unexpected error occurred while processing the image."},
         )
 
 

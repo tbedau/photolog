@@ -75,13 +75,12 @@ async def login(
             form_data.username,
             get_remote_address(request),
         )
-        # 200 is required by the htmx swap. Generic message — no user-existence
-        # distinction, no internal detail.
-        return templates.TemplateResponse(
-            request,
-            "partials/error_message.html",
-            {"error_message": "Incorrect username or password"},
-            status_code=200,
+        # Generic message — no user-existence distinction, no internal detail.
+        # The 401 trips AuthRedirectMiddleware only for HTML navigations; the
+        # login JS sends Accept: application/json, so it sees the JSON body.
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "Incorrect username or password"},
         )
 
     logger.info("login_success username=%s", user.username)
@@ -89,9 +88,7 @@ async def login(
         data={"sub": user.username},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    response = JSONResponse(
-        content={"success": True}, headers={"HX-Redirect": "/upload"}
-    )
+    response = JSONResponse(content={"success": True, "redirect": "/upload"})
     _set_auth_cookie(response, access_token)
     return response
 
