@@ -15,3 +15,6 @@ wheels/
 # Other folders
 data/
 uploads/
+
+# macOS
+.DS_Store
