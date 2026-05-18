@@ -1,6 +1,6 @@
 # Photolog
 
-Photolog is a minimalist, responsive web application for sharing and viewing a personal collection of images. The original idea behind the app was to upload one image per day, functioning as a kind of visual diary, but this behavior is configurable. The app allows authenticated users to upload photos, while others can browse an infinite scroll of your curated gallery.
+Photolog is a minimalist, responsive web application for sharing and viewing a personal collection of images. The original idea behind the app was to upload one image per day, functioning as a kind of visual diary, but this behavior is configurable. The app allows authenticated users to upload photos. Visitors can browse a snap-scroll feed of the most recent photos, explore the full archive grouped by month, and share any individual photo via its date-based permalink.
 
 I am running an instance of Photolog at [https://photolog.tillmannbedau.com](https://photolog.tillmannbedau.com), where I try to share one photo per day from my analog archives and occasionally also upload recent images.
 

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}{{ image.upload_date.strftime('%d %B %Y') }} — Tillmann Bedau — Photolog{% endblock %}
+
+{% block content %}
+<section class="slide slide--detail">
+    <div class="slide__frame">
+        <img class="slide__img" src="/images/{{ image.filename }}" alt="" decoding="async">
+    </div>
+    <figcaption class="slide__caption">{{ image.upload_date.strftime('%d %B %Y') }}</figcaption>
+</section>
+
+{% if prev or next %}
+<nav class="detail-nav">
+    {% if prev %}
+    <a class="detail-nav__link detail-nav__link--prev" href="{{ prev.upload_date.strftime('/%Y/%m/%d') }}">← {{ prev.upload_date.strftime('%d %b') }}</a>
+    {% else %}<span></span>{% endif %}
+
+    {% if next %}
+    <a class="detail-nav__link detail-nav__link--next" href="{{ next.upload_date.strftime('/%Y/%m/%d') }}">{{ next.upload_date.strftime('%d %b') }} →</a>
+    {% else %}<span></span>{% endif %}
+</nav>
+
+<script>
+    (() => {
+        document.addEventListener('keydown', (e) => {
+            {% if prev %}if (e.key === 'ArrowLeft') { e.preventDefault(); location.href = '{{ prev.upload_date.strftime("/%Y/%m/%d") }}'; }{% endif %}
+            {% if next %}if (e.key === 'ArrowRight') { e.preventDefault(); location.href = '{{ next.upload_date.strftime("/%Y/%m/%d") }}'; }{% endif %}
+        });
+    })();
+</script>
+{% endif %}
+{% endblock %}

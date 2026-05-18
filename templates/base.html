@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tillmann Bedau – Photolog</title>
-    <meta name="description" content="Archiving moments – mostly past, occasionally present." />
+    <title>{% block title %}Tillmann Bedau — Photolog{% endblock %}</title>
+    <meta name="description" content="A daily photo log by Tillmann Bedau." />
     <link rel="stylesheet" href="/static/css/styles.css">
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
     <link rel="icon" type="image/png" href="/static/favicon/favicon-96x96.png" sizes="96x96" />
@@ -14,9 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Photolog" />
     <link rel="manifest" href="/static/favicon/site.webmanifest" />
 </head>
-<body>
-    <div class="container">
-        {% block content %}{% endblock %}
-    </div>
+<body{% block body_attrs %}{% endblock %}>
+    {% block header %}{% include "partials/header.html" %}{% endblock %}
+    {% block content %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Archive — Tillmann Bedau — Photolog{% endblock %}
+
+{% block content %}
+<main class="archive">
+    {% for month in months %}
+    <section class="archive__month">
+        <h2 class="archive__label">{{ month.label }}</h2>
+        <div class="archive__grid">
+            {% for image in month.images %}
+            <a class="thumb" href="{{ image.upload_date.strftime('/%Y/%m/%d') }}">
+                <img src="/images/{{ image.filename }}" alt="" loading="lazy" decoding="async">
+                <time class="thumb__date" datetime="{{ image.upload_date.strftime('%Y-%m-%d') }}">{{ image.upload_date.strftime('%d %b') }}</time>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% else %}
+    <div class="feed-empty">No photos in the archive yet.</div>
+    {% endfor %}
+</main>
+{% endblock %}

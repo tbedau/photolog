@@ -1,283 +1,475 @@
-/* Global Styles */
+/* Ronzino by Collletttivo (Luigi Gorlero & Nunzio Mazzaferro) — SIL Open Font License */
+@font-face {
+  font-family: "Ronzino";
+  src: url("/static/fonts/Ronzino-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Ronzino";
+  src: url("/static/fonts/Ronzino-Oblique.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Ronzino";
+  src: url("/static/fonts/Ronzino-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Ronzino";
+  src: url("/static/fonts/Ronzino-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --fg: #111;
+  --fg-mute: #999;
+  --fg-soft: #b0b0b0;
+  --bg: #fff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-    font-family: sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: #f9f9f9;
-    color: #333;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Ronzino", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-body, .container {
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+/* ---------- Shared header ---------- */
+
+.mark {
+  position: fixed;
+  top: max(1.5rem, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--fg);
+  text-decoration: none;
+  z-index: 10;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: transform 0.5s ease, color 0.25s ease;
 }
 
-/* Main Container */
-.container {
-    width: 100%;
-    max-width: 900px;
-    padding: 0.5rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    box-sizing: border-box;
+.header-side {
+  position: fixed;
+  top: max(1.5rem, env(safe-area-inset-top));
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: #888;
+  text-decoration: none;
+  z-index: 10;
+  transition: transform 0.5s ease, color 0.25s ease;
 }
 
-/* Photolog Styles */
-.photolog {
-    width: 100%;
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 40px;
-    box-sizing: border-box;
+.header-side:hover {
+  color: var(--fg);
 }
 
-.photolog__item {
-    margin: 0;
-    padding: 0 10px;
-    position: relative;
-    display: flex;
-    justify-content: center;
-    width: 100%;
-    box-sizing: border-box;
+.header-side--left {
+  left: max(1.5rem, env(safe-area-inset-left));
+  transform-origin: top left;
 }
 
-.photolog__image {
-    border-radius: 4px;
-    transition: all 0.15s ease;
-    display: block;
-    max-width: 100%;
-    box-sizing: border-box;
-    height: auto;
-    object-fit: cover;
-    max-height: 700px;
+.header-side--right {
+  right: max(1.5rem, env(safe-area-inset-right));
+  transform-origin: top right;
 }
 
-/* Hover Effects */
-.photolog__image:hover {
-    transform: scale(1.01);
-    border-radius: 0;
+/* Soft white wash behind header items so images flowing past during scroll stay readable. */
+.mark::before,
+.header-side::before {
+  content: "";
+  position: absolute;
+  inset: -0.35rem -0.7rem;
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-radius: 3px;
+  z-index: -1;
+  pointer-events: none;
 }
 
-.photolog__date {
-    position: absolute;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.6);
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 14px;
-    opacity: 0;
-    transition: opacity 0.1s ease;
+/* On the snap-scroll feed, the header recedes once we leave the cover photo. */
+body.is-past-cover .mark {
+  color: var(--fg-soft);
+  transform: translateX(-50%) scale(0.72);
 }
 
-.photolog__image:hover + .photolog__date,
-.photolog__date:hover {
-    opacity: 1;
+body.is-past-cover .header-side {
+  color: var(--fg-soft);
+  transform: scale(0.72);
 }
 
-/* Login Container */
-.login-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    max-width: 350px;
-    padding: 0 1rem;
-    margin-top: 5rem;
-    box-sizing: border-box;
-    position: relative;
+body.is-past-cover .mark:hover,
+body.is-past-cover .header-side:hover {
+  color: #555;
 }
 
-/* Login Form Styling */
-.login-form {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1.5rem;
+/* ---------- Feed (front page) ---------- */
+
+.feed {
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
 }
 
-.login-form__input {
-    width: 100%;
-    padding: 0.8rem;
-    border: 1px solid #aaa;
-    border-radius: 4px;
-    font-size: 1rem;
-    box-sizing: border-box;
-    transition: border-color 0.2s ease;
+.slide {
+  height: 100vh;
+  height: 100dvh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  justify-items: center;
+  padding: calc(3.5rem + 3vh) 9vw 5vh;
 }
 
-.login-form__input:focus {
-    border-color: #333;
-    outline: none;
+.slide__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
-.login-form__button {
-    background-color: #107178;
-    color: white;
-    padding: 0.8rem;
-    width: 100%;
-    font-size: 1rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s ease, transform 0.1s ease;
+.slide__img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
-.login-form__button:hover {
-    background-color: #0d5e65;
+.slide__caption {
+  margin-top: 1.25rem;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-mute);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
-.login-form__button:active {
-    transform: scale(0.98);
-    background-color: #0c545c;
+/* Detail page (permalink) — prev/next nav at the bottom corners */
+.detail-nav {
+  position: fixed;
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 max(1.5rem, env(safe-area-inset-left)) 0 max(1.5rem, env(safe-area-inset-right));
+  pointer-events: none;
+  z-index: 5;
 }
 
-/* Upload Container */
-.upload-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    max-width: 500px;
-    padding: 0 1rem;
-    margin-top: 5rem;
-    box-sizing: border-box;
+.detail-nav__link {
+  pointer-events: auto;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-mute);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.2s ease;
 }
 
-/* Drop Area Styling */
-.drop-area, .error-container {
-    width: 100%;
-    max-width: 500px;
-    box-sizing: border-box;
+.detail-nav__link:hover {
+  color: var(--fg);
 }
 
-.drop-area {
-    padding: 3rem;
-    border: 2px dashed #aaa;
-    border-radius: 8px;
-    text-align: center;
-    background-color: #f9f9f9;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
-    cursor: pointer;
+/* Empty state — when no photos exist yet */
+.feed-empty {
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--fg-mute);
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
-.drop-area--dragging {
-    background-color: #e0e0e0;
-    border-color: #333;
+/* ---------- Archive ---------- */
+
+.archive {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: calc(4.5rem + 4vh) 6vw 8vh;
 }
 
-.drop-area__text {
-    margin: 0 0 1.5rem;
-    font-size: 1.1rem;
-    color: #666;
+.archive__month {
+  margin-top: 6rem;
 }
 
-/* Upload Form Button */
-.upload-form__button {
-    background-color: #107178;
-    color: white;
-    padding: 0.8rem;
-    width: 100%;
-    max-width: 250px;
-    font-size: 1rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s ease, transform 0.1s ease;
+.archive__month:first-child {
+  margin-top: 0;
 }
 
-.upload-form__button:hover {
-    background-color: #0d5e65;
+.archive__label {
+  margin: 0 0 1.75rem;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-mute);
+  font-variant-numeric: tabular-nums;
 }
 
-.upload-form__button:active {
-    transform: scale(0.98);
-    background-color: #0c545c;
+.archive__grid {
+  column-count: 5;
+  column-gap: 12px;
 }
 
-/* Error Message Styling */
+.thumb {
+  display: block;
+  margin: 0 0 12px;
+  break-inside: avoid;
+  text-decoration: none;
+  position: relative;
+  transition: opacity 0.2s ease;
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.thumb:hover {
+  opacity: 0.7;
+}
+
+.thumb__date {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  mix-blend-mode: difference;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.thumb:hover .thumb__date {
+  opacity: 0.9;
+}
+
+/* On touch devices there's no hover — show the date by default so visitors can scan
+   the archive without having to tap into each photo. */
+@media (hover: none) {
+  .thumb__date {
+    opacity: 0.9;
+  }
+}
+
+/* ---------- Auth pages (login / upload) ---------- */
+
+.auth {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6rem 1.5rem 3rem;
+}
+
+.auth__form {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth__input {
+  width: 100%;
+  padding: 0.75rem 0;
+  border: 0;
+  border-bottom: 1px solid #ddd;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--fg);
+  outline: none;
+  transition: border-color 0.2s ease;
+  font-family: "Ronzino", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.auth__input::placeholder {
+  color: var(--fg-soft);
+}
+
+.auth__input:focus {
+  border-bottom-color: var(--fg);
+}
+
+.auth__button {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--fg);
+  color: #fff;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-family: "Ronzino", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.auth__button:hover {
+  background: #333;
+}
+
+.auth__drop {
+  width: 100%;
+  max-width: 420px;
+  padding: 3.5rem 1.5rem;
+  border: 1px dashed #ccc;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.auth__drop--dragging {
+  border-color: var(--fg);
+  background: #fafafa;
+}
+
+.auth__drop-text {
+  margin: 0 0 1.25rem;
+  font-size: 14px;
+  color: var(--fg-mute);
+  letter-spacing: 0.02em;
+}
+
+.auth__footer {
+  margin-top: 2.5rem;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-mute);
+}
+
+.auth__footer a {
+  color: var(--fg-mute);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.auth__footer a:hover {
+  color: var(--fg);
+}
+
 .error-container {
-    margin-top: 1rem;
+  margin-top: 1.5rem;
+  width: 100%;
+  max-width: 420px;
+  min-height: 1rem;
 }
 
 .error-message {
-    background-color: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-    padding: 1rem;
-    border-radius: 4px;
-    font-weight: 500;
-    text-align: center;
-    overflow-wrap: break-word;
-    box-sizing: border-box;
+  font-size: 13px;
+  color: #b00020;
+  text-align: center;
+  letter-spacing: 0.02em;
 }
 
-/* Logout Link at Bottom */
-.logout-link {
-    margin-bottom: 1rem;
-    font-size: 1rem;
-    color: #666;
-    text-align: center;
+/* ---------- Responsive ---------- */
+
+@media (max-width: 640px) {
+  .slide {
+    padding: calc(3rem + 2vh) 3vw 2.5vh;
+  }
+
+  .mark {
+    top: max(0.9rem, env(safe-area-inset-top));
+    font-size: 15px;
+  }
+
+  .header-side {
+    top: max(0.9rem, env(safe-area-inset-top));
+    font-size: 15px;
+  }
+
+  .header-side--left {
+    left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .header-side--right {
+    right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .archive {
+    padding: calc(3.25rem + 3vh) 3vw 5vh;
+  }
+
+  .archive__month {
+    margin-top: 4rem;
+  }
 }
 
-.logout-link a {
-    font-size: 1.1rem;
-    color: #666;
-    text-decoration: none;
-    transition: color 0.2s ease;
+/* Very narrow screens (e.g. iPhone SE 1st gen, ~320px wide) — pull the header down
+   one more size step so the three labels never crowd each other. */
+@media (max-width: 360px) {
+  .mark,
+  .header-side {
+    font-size: 13px;
+  }
 }
 
-.logout-link a:hover {
-    color: #107178;
+@media (max-width: 1100px) {
+  .archive__grid {
+    column-count: 4;
+  }
 }
 
-/* Responsive Adjustments */
-@media (max-width: 768px) {
-    .photolog {
-        padding: 10px;
-        gap: 20px;
-        width: 100%;
-    }
-    
-    .photolog__item {
-        padding: 0 10px;
-    }
-    
-    .photolog__image.landscape,
-    .photolog__image.portrait {
-        max-width: calc(100% - 20px);
-        width: auto;
-        height: auto;
-        max-height: 80vh;
-    }
+@media (max-width: 800px) {
+  .archive__grid {
+    column-count: 3;
+  }
 }
 
-@media (max-width: 480px) {
-    .container {
-        padding: 0.25rem;
-    }
-    
-    .photolog {
-        padding: 5px;
-    }
-    
-    .photolog__item {
-        padding: 0 5px;
-    }
-    
-    .photolog__image.landscape,
-    .photolog__image.portrait {
-        max-width: calc(100% - 10px);
-    }
+@media (max-width: 520px) {
+  .archive__grid {
+    column-count: 2;
+    column-gap: 8px;
+  }
+
+  .thumb {
+    margin-bottom: 8px;
+  }
 }

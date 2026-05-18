@@ -1,21 +1,87 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="photolog">
+{% if images %}
+<main class="feed" id="feed">
     {% for image in images %}
-    <figure class="photolog__item"
-        {% if loop.last and next_page %}
-            hx-get="/load_images?page={{ next_page }}"
-            hx-trigger="revealed"
-            hx-swap="afterend"
-        {% endif %}>
-        <img src="/images/{{ image.filename }}" 
-             alt=""
-             class="photolog__image">
-        <figcaption class="photolog__date">
-            {{ image.upload_date.strftime('%Y-%m-%d %H:%M:%S') }} UTC
-        </figcaption>
-    </figure>
+    <section class="slide" data-date="{{ image.upload_date.strftime('%Y-%m-%d') }}">
+        <div class="slide__frame">
+            <img class="slide__img"
+                 src="/images/{{ image.filename }}"
+                 alt=""
+                 {% if loop.index > 2 %}loading="lazy"{% endif %}
+                 decoding="async">
+        </div>
+        <figcaption class="slide__caption">{{ image.upload_date.strftime('%d %B %Y') }}</figcaption>
+    </section>
     {% endfor %}
-</div>
+</main>
+
+<script>
+    (() => {
+        const feed = document.getElementById('feed');
+        const slides = Array.from(feed.querySelectorAll('.slide'));
+        if (slides.length === 0) return;
+        let currentIdx = 0;
+
+        // Track which slide is in view; recede the header once we leave the cover photo
+        const io = new IntersectionObserver((entries) => {
+            entries.forEach((e) => {
+                if (!e.isIntersecting) return;
+                currentIdx = slides.indexOf(e.target);
+                document.body.classList.toggle('is-past-cover', currentIdx > 0);
+            });
+        }, { root: feed, threshold: 0.6 });
+        slides.forEach((s) => io.observe(s));
+
+        // Custom snappy scroll for keyboard nav — snap is temporarily disabled mid-animation
+        // so mandatory-snap doesn't yank rAF frames to a snap point.
+        const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+        let activeAnimation = 0;
+        const scrollToSlide = (idx) => {
+            idx = Math.max(0, Math.min(slides.length - 1, idx));
+            const target = slides[idx].offsetTop;
+            if (prefersReducedMotion) {
+                feed.scrollTop = target;
+                return;
+            }
+            const start = feed.scrollTop;
+            const distance = target - start;
+            if (Math.abs(distance) < 1) return;
+            const duration = 320;
+            const startTime = performance.now();
+            const myAnimation = ++activeAnimation;
+            feed.style.scrollSnapType = 'none';
+            const step = (now) => {
+                if (myAnimation !== activeAnimation) return;
+                const t = Math.min(1, (now - startTime) / duration);
+                feed.scrollTop = start + distance * easeOutCubic(t);
+                if (t < 1) {
+                    requestAnimationFrame(step);
+                } else {
+                    feed.scrollTop = target;
+                    feed.style.scrollSnapType = '';
+                }
+            };
+            requestAnimationFrame(step);
+        };
+
+        document.addEventListener('keydown', (e) => {
+            let next = currentIdx;
+            if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === 'j') next = currentIdx + 1;
+            else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'k') next = currentIdx - 1;
+            else if (e.key === 'Home') next = 0;
+            else if (e.key === 'End') next = slides.length - 1;
+            else return;
+            if (next !== currentIdx) {
+                e.preventDefault();
+                scrollToSlide(next);
+            }
+        });
+    })();
+</script>
+{% else %}
+<div class="feed-empty">No photos yet.</div>
+{% endif %}
 {% endblock %}

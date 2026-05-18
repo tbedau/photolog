@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
-from datetime import datetime, time
+from datetime import date as date_cls, datetime, time, timedelta
 import pytz
 
 from ..database import get_session
@@ -11,7 +11,6 @@ from ..security import get_current_user
 from ..config import get_settings
 from ..image_processing import process_and_save_image
 
-# Load settings and configure router and templates
 settings = get_settings()
 router = APIRouter(tags=["images"])
 templates = Jinja2Templates(directory="templates")
@@ -19,45 +18,92 @@ templates = Jinja2Templates(directory="templates")
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, session: Session = Depends(get_session)):
-    """
-    Displays the main page with a list of images, paginated.
-
-    Args:
-        request: The HTTP request object.
-        session: Database session dependency.
-
-    Returns:
-        TemplateResponse: The main page with a list of images.
-    """
-    page = 1
-    offset = (page - 1) * settings.IMAGES_PER_PAGE
+    """Front page: the most recent N photos as a snap-scroll feed."""
     images = session.exec(
         select(Image)
         .order_by(Image.upload_date.desc())
-        .offset(offset)
-        .limit(settings.IMAGES_PER_PAGE)
+        .limit(settings.FRONTPAGE_PHOTO_COUNT)
     ).all()
 
-    more_images_available = len(images) == settings.IMAGES_PER_PAGE
-    next_page = page + 1 if more_images_available else None
+    return templates.TemplateResponse(
+        request, "index.html", {"images": images}
+    )
+
+
+@router.get("/archive", response_class=HTMLResponse)
+async def archive(request: Request, session: Session = Depends(get_session)):
+    """Archive: every photo, grouped by month, newest first."""
+    images = session.exec(
+        select(Image).order_by(Image.upload_date.desc())
+    ).all()
+
+    months: list[dict] = []
+    for image in images:
+        key = (image.upload_date.year, image.upload_date.month)
+        if not months or months[-1]["_key"] != key:
+            months.append(
+                {
+                    "_key": key,
+                    "label": image.upload_date.strftime("%B %Y"),
+                    "images": [],
+                }
+            )
+        months[-1]["images"].append(image)
 
     return templates.TemplateResponse(
-        request, "index.html", {"images": images, "next_page": next_page}
+        request, "archive.html", {"months": months}
+    )
+
+
+@router.get("/{year:int}/{month:int}/{day:int}", response_class=HTMLResponse)
+async def photo_detail(
+    year: int,
+    month: int,
+    day: int,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """Permalink: the photo for a given day, with prev/next links to navigate the timeline."""
+    try:
+        target = date_cls(year, month, day)
+    except ValueError:
+        raise HTTPException(status_code=404)
+
+    tz = pytz.timezone(settings.TIMEZONE)
+    day_start = tz.localize(datetime.combine(target, time.min))
+    day_end = tz.localize(datetime.combine(target + timedelta(days=1), time.min))
+
+    image = session.exec(
+        select(Image)
+        .where(Image.upload_date >= day_start)
+        .where(Image.upload_date < day_end)
+        .order_by(Image.upload_date.desc())
+    ).first()
+
+    if not image:
+        raise HTTPException(status_code=404)
+
+    prev_image = session.exec(
+        select(Image)
+        .where(Image.upload_date < day_start)
+        .order_by(Image.upload_date.desc())
+    ).first()
+
+    next_image = session.exec(
+        select(Image)
+        .where(Image.upload_date >= day_end)
+        .order_by(Image.upload_date.asc())
+    ).first()
+
+    return templates.TemplateResponse(
+        request,
+        "detail.html",
+        {"image": image, "prev": prev_image, "next": next_image},
     )
 
 
 @router.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request, current_user: User = Depends(get_current_user)):
-    """
-    Renders the upload page for authenticated users.
-
-    Args:
-        request: The HTTP request object.
-        current_user: The currently authenticated user.
-
-    Returns:
-        TemplateResponse: The upload page.
-    """
     return templates.TemplateResponse(request, "upload.html")
 
 
@@ -68,33 +114,21 @@ async def upload_image(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """
-    Processes and saves an uploaded image, then stores its metadata in the database.
-    Checks if the user has reached the daily upload limit.
-
-    Args:
-        request: The HTTP request object.
-        file: The uploaded image file.
-        current_user: The currently authenticated user.
-        session: Database session dependency.
-
-    Returns:
-        JSONResponse: Success response with redirect header or error message.
-    """
+    """Process and save an uploaded image, enforcing the daily upload cap."""
     tz = pytz.timezone(settings.TIMEZONE)
     now = datetime.now(tz)
 
     start_of_day = datetime.combine(now.date(), time.min, tzinfo=tz)
     end_of_day = datetime.combine(now.date(), time.max, tzinfo=tz)
 
-    daily_upload_count = session.exec(
-        select(Image)
-        .where(Image.user_id == current_user.id)
-        .where(Image.upload_date >= start_of_day)
-        .where(Image.upload_date <= end_of_day)
-    ).all()
-
-    daily_upload_count = len(daily_upload_count)
+    daily_upload_count = len(
+        session.exec(
+            select(Image)
+            .where(Image.user_id == current_user.id)
+            .where(Image.upload_date >= start_of_day)
+            .where(Image.upload_date <= end_of_day)
+        ).all()
+    )
 
     if daily_upload_count >= settings.MAX_UPLOADS_PER_DAY:
         return templates.TemplateResponse(
@@ -133,67 +167,18 @@ async def upload_image(
         )
 
 
-@router.get("/load_images", response_class=HTMLResponse)
-async def load_images(
-    request: Request, page: int = 1, session: Session = Depends(get_session)
-):
-    """
-    Loads a page of images for infinite scrolling or pagination.
-
-    Args:
-        request: The HTTP request object.
-        page: The current page number.
-        session: Database session dependency.
-
-    Returns:
-        TemplateResponse: Partial HTML with a list of images for the requested page.
-    """
-    offset = (page - 1) * settings.IMAGES_PER_PAGE
-    images = session.exec(
-        select(Image)
-        .order_by(Image.upload_date.desc())
-        .offset(offset)
-        .limit(settings.IMAGES_PER_PAGE)
-    ).all()
-
-    more_images_available = len(images) == settings.IMAGES_PER_PAGE
-    next_page = page + 1 if more_images_available else None
-
-    return templates.TemplateResponse(
-        request,
-        "partials/image_list.html",
-        {"images": images, "next_page": next_page},
-    )
-
-
 @router.get("/images/{filename}")
 async def get_image(filename: str, session: Session = Depends(get_session)):
-    """
-    Serves a stored image file if the file exists.
-
-    Args:
-        filename: The unique filename of the stored image.
-        session: Database session dependency.
-
-    Returns:
-        FileResponse: The image file response.
-
-    Raises:
-        HTTPException: If the image is not found or the filename is invalid.
-    """
-    # Validate the filename to prevent path traversal
+    """Serve a stored image file by filename."""
+    # Guard against path traversal
     if ".." in filename or "/" in filename:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # Check if the image exists in the database
     image = session.exec(select(Image).where(Image.filename == filename)).first()
-
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # Construct the full path to the image file
     file_path = settings.UPLOAD_FOLDER / filename
-
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Image file not found")
 
