@@ -9,6 +9,13 @@
       imagesizes="100vw"
       type="image/avif"
       fetchpriority="high">
+{# Idle-time prefetch of the adjacent permalinks. The cached document carries
+   its own <link rel="preload" imagesrcset> so the image fetch starts the
+   instant the user navigates — and the right-DPR AVIF is picked by the
+   browser at that point, which is why we prefetch the document rather than
+   guessing a single image width here. #}
+{% if prev %}<link rel="prefetch" href="{{ prev.upload_date.strftime('/%Y/%m/%d') }}">{% endif %}
+{% if next %}<link rel="prefetch" href="{{ next.upload_date.strftime('/%Y/%m/%d') }}">{% endif %}
 {% endblock %}
 
 {% block content %}
