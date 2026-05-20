@@ -47,6 +47,13 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` HTML attribute is `display: none` via the UA stylesheet, but
+   any explicit `display` rule (flex, inline-block, etc.) overrides it. Force
+   the hide so toggling `el.hidden = true/false` in JS just works. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -535,62 +542,148 @@ body.ui-hidden .feed-end {
    advertising itself as clickable. */
 .auth__drop[data-state="uploading"],
 .auth__drop[data-state="processing"],
-.auth__drop[data-state="done"] {
+.auth__drop[data-state="done"],
+.auth__drop[data-state="error"] {
   cursor: default;
 }
 
-/* Determinate-by-default progress bar. While bytes are flying the JS sets
-   `.upload-progress__fill { width: N% }`; once the request body is fully
-   delivered the JS swaps to indeterminate, which hides the fill and animates
-   a sliding segment instead. */
-.upload-progress {
-  margin-top: 1.25rem;
+/* ---- Upload checklist ----
+   One row per pipeline phase. Each row shows a leading status icon, a label,
+   and (for some rows) trailing metadata: the bytes-in-flight bar on the
+   "Uploading" row, the source dimensions on "Reading image", and per-width
+   chips on the two encoder rows. State lives in `data-state` on each `<li>`
+   ("pending" | "active" | "done" | "error"); the icon glyph is set via the
+   `::before` pseudo-element below. */
+.upload-checklist {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
 }
 
-.upload-progress__track {
-  position: relative;
-  width: 100%;
-  height: 2px;
-  background: var(--line);
-  overflow: hidden;
-}
-
-.upload-progress__fill {
-  height: 100%;
-  width: 0%;
-  background: var(--fg);
-  transition: width 150ms linear;
-}
-
-.upload-progress__track--indeterminate .upload-progress__fill {
-  display: none;
-}
-
-.upload-progress__track--indeterminate::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 35%;
-  left: -35%;
-  background: var(--fg);
-  animation: upload-progress-slide 1.15s ease-in-out infinite;
-}
-
-@keyframes upload-progress-slide {
-  0% {
-    left: -35%;
-  }
-  100% {
-    left: 100%;
-  }
-}
-
-.upload-progress__label {
-  margin: 0.75rem 0 0;
+.upload-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.55rem;
+  row-gap: 0.2rem;
   font-size: 13px;
-  color: var(--fg-mute);
   letter-spacing: -0.005em;
+  color: var(--fg-mute);
+  transition: color 0.2s ease;
+}
+
+.upload-step[data-state="active"],
+.upload-step[data-state="done"] {
+  color: var(--fg);
+}
+
+.upload-step[data-state="error"] {
+  color: #b00020;
+}
+
+.upload-step__icon {
+  flex: 0 0 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  font-size: 13px;
+  line-height: 1;
+  color: inherit;
+}
+
+.upload-step__label {
+  flex: 1 1 auto;
+}
+
+.upload-step[data-state="pending"] .upload-step__icon::before {
+  content: "·";
+  color: var(--fg-soft);
+  font-size: 18px;
+}
+
+.upload-step[data-state="active"] .upload-step__icon::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--fg);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: upload-spin 0.8s linear infinite;
+}
+
+.upload-step[data-state="done"] .upload-step__icon::before {
+  content: "✓";
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.upload-step[data-state="error"] .upload-step__icon::before {
+  content: "✗";
+  font-size: 13px;
+  font-weight: 500;
+  color: #b00020;
+}
+
+@keyframes upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.upload-step[data-state="active"] .upload-step__label,
+.upload-step[data-state="done"] .upload-step__label,
+.upload-step[data-state="error"] .upload-step__label {
+  font-weight: 500;
+}
+
+/* Width chips under the AVIF / JPEG rows. Always break to a new line below
+   the label and indent under the icon column — keeps the row scannable when
+   five or six chips would otherwise crowd the label. */
+.upload-substeps {
+  flex-basis: 100%;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.05rem;
+  padding-left: calc(1rem + 0.55rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-substep {
+  font-size: 12px;
+  color: var(--fg-soft);
+  letter-spacing: -0.005em;
+  transition: color 0.2s ease;
+}
+
+.upload-substep[data-state="active"] {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.upload-substep[data-state="active"]::after {
+  content: "…";
+  margin-left: 0.15rem;
+}
+
+.upload-substep[data-state="done"] {
+  color: var(--fg);
+}
+
+.upload-substep[data-state="done"]::after {
+  content: " ✓";
+  font-size: 11px;
+}
+
+.upload-retry {
+  margin-top: 1.25rem;
 }
 
 /* ---------- Responsive ---------- */

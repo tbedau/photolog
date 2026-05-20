@@ -1,7 +1,8 @@
+import json
 import logging
 import re
 from datetime import date as date_cls, datetime, time, timedelta
-from typing import Optional
+from typing import Iterator, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
@@ -11,6 +12,7 @@ from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
+    StreamingResponse,
 )
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
@@ -21,7 +23,7 @@ from ..database import get_session
 from ..image_processing import (
     AVIF_WIDTHS,
     JPEG_WIDTHS,
-    process_and_save_image,
+    iter_process_image_bytes,
 )
 from ..models import Image, User
 from ..security import get_current_user
@@ -156,9 +158,53 @@ async def photo_detail(
     )
 
 
+def _daily_cap_error(session: Session, user_id: int) -> Optional[str]:
+    """Return a human-readable error if `user_id` is at the daily upload cap.
+
+    Shared between the pre-flight ``GET /upload/precheck`` (so the front-end
+    can refuse to start an upload that's destined to 429) and the upload POST
+    itself (so we still enforce server-side — the client can be stale or
+    bypassed entirely).
+    """
+    tz = pytz.timezone(settings.TIMEZONE)
+    now = datetime.now(tz)
+    start_of_day = datetime.combine(now.date(), time.min, tzinfo=tz)
+    end_of_day = datetime.combine(now.date(), time.max, tzinfo=tz)
+    daily_upload_count = len(
+        session.exec(
+            select(Image)
+            .where(Image.user_id == user_id)
+            .where(Image.upload_date >= start_of_day)
+            .where(Image.upload_date <= end_of_day)
+        ).all()
+    )
+    if daily_upload_count >= settings.MAX_UPLOADS_PER_DAY:
+        return f"You have reached your daily upload limit of {settings.MAX_UPLOADS_PER_DAY} image(s)."
+    return None
+
+
 @router.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request, current_user: User = Depends(get_current_user)):
     return templates.TemplateResponse(request, "upload.html")
+
+
+@router.get("/upload/precheck")
+async def upload_precheck(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Lightweight 'can I upload right now?' probe the front-end runs the
+    moment a file is picked, so a capped user never sees the checklist flash
+    through and never sends bytes that would just be rejected at the server."""
+    error = _daily_cap_error(session, current_user.id)
+    if error:
+        return JSONResponse(status_code=429, content={"error": error})
+    return JSONResponse(content={"ok": True})
+
+
+def _ndjson(event: dict) -> bytes:
+    """One event as a single newline-terminated JSON line (NDJSON)."""
+    return (json.dumps(event, separators=(",", ":")) + "\n").encode("utf-8")
 
 
 @router.post("/upload")
@@ -170,57 +216,100 @@ async def upload_image(
 ):
     """Process and save an uploaded image, enforcing the daily upload cap.
 
-    Returns a small JSON envelope consumed by ``static/js/auth.js`` — success
-    carries the post-upload redirect target, failure carries a human-readable
-    ``error`` string and the appropriate HTTP status.
+    Streams an NDJSON sequence of phase events to the browser so the upload UI
+    can render a per-step checklist (decode → original → 5 AVIF widths → JPEG
+    fallbacks → commit). The terminal line is always a ``{"phase": "result"}``
+    object carrying either ``success: true`` with a redirect, or ``success:
+    false`` with a human-readable error.
+
+    The cap check is duplicated from ``/upload/precheck`` — the client
+    short-circuits there, but a direct ``curl`` (or a stale tab racing
+    another) must still be enforced here.
     """
-    tz = pytz.timezone(settings.TIMEZONE)
-    now = datetime.now(tz)
+    cap_error = _daily_cap_error(session, current_user.id)
+    if cap_error:
+        return JSONResponse(status_code=429, content={"error": cap_error})
 
-    start_of_day = datetime.combine(now.date(), time.min, tzinfo=tz)
-    end_of_day = datetime.combine(now.date(), time.max, tzinfo=tz)
+    image_data = await file.read()
+    content_type = file.content_type
+    original_filename = file.filename
+    user_id = current_user.id
 
-    daily_upload_count = len(
-        session.exec(
-            select(Image)
-            .where(Image.user_id == current_user.id)
-            .where(Image.upload_date >= start_of_day)
-            .where(Image.upload_date <= end_of_day)
-        ).all()
+    def event_stream() -> Iterator[bytes]:
+        processed: Optional[dict] = None
+        try:
+            for event in iter_process_image_bytes(
+                image_data, content_type=content_type
+            ):
+                yield _ndjson(event)
+                if event["phase"] == "complete":
+                    processed = event
+                elif event["phase"] == "error":
+                    yield _ndjson(
+                        {
+                            "phase": "result",
+                            "success": False,
+                            "error": event["detail"],
+                            "status_code": event["status_code"],
+                        }
+                    )
+                    return
+        except Exception:
+            logger.exception("upload_pipeline_failed user_id=%s", user_id)
+            yield _ndjson(
+                {
+                    "phase": "result",
+                    "success": False,
+                    "error": "An unexpected error occurred while processing the image.",
+                }
+            )
+            return
+
+        if processed is None:
+            # Defensive: iter_process_image_bytes always yields a terminal event.
+            yield _ndjson(
+                {
+                    "phase": "result",
+                    "success": False,
+                    "error": "Image pipeline did not terminate.",
+                }
+            )
+            return
+
+        yield _ndjson({"phase": "commit", "status": "active"})
+        try:
+            image = Image(
+                filename=processed["storage_id"],
+                original_filename=original_filename,
+                user_id=user_id,
+                width=processed["width"],
+                height=processed["height"],
+                dominant_color=processed["dominant_color"],
+            )
+            session.add(image)
+            session.commit()
+        except Exception:
+            logger.exception("upload_commit_failed user_id=%s", user_id)
+            yield _ndjson(
+                {
+                    "phase": "result",
+                    "success": False,
+                    "error": "Image was processed but could not be saved.",
+                }
+            )
+            return
+
+        yield _ndjson({"phase": "commit", "status": "done"})
+        yield _ndjson({"phase": "result", "success": True, "redirect": "/"})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="application/x-ndjson",
+        # Tell intermediaries (nginx, Cloudflare) to flush each line as it
+        # arrives instead of buffering the whole response. Without this the
+        # checklist would freeze for the full ~30s and then snap to done.
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"},
     )
-
-    if daily_upload_count >= settings.MAX_UPLOADS_PER_DAY:
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error": f"You have reached your daily upload limit of {settings.MAX_UPLOADS_PER_DAY} image(s)."
-            },
-        )
-
-    try:
-        processed = await process_and_save_image(file, user_id=current_user.id)
-
-        image = Image(
-            filename=processed.storage_id,
-            original_filename=file.filename,
-            user_id=current_user.id,
-            width=processed.width,
-            height=processed.height,
-            dominant_color=processed.dominant_color,
-        )
-        session.add(image)
-        session.commit()
-
-        return JSONResponse(content={"success": True, "redirect": "/"})
-
-    except HTTPException as e:
-        return JSONResponse(status_code=e.status_code, content={"error": e.detail})
-    except Exception:
-        logger.exception("upload_failed user_id=%s", current_user.id)
-        return JSONResponse(
-            status_code=500,
-            content={"error": "An unexpected error occurred while processing the image."},
-        )
 
 
 @router.get("/i/{storage_id}/{spec}.{ext}")

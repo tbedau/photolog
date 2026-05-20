@@ -17,12 +17,36 @@
             <button type="button" class="auth__button" data-role="select">Select</button>
         </form>
 
-        <div class="upload-progress" data-role="progress" hidden>
-            <div class="upload-progress__track" data-role="track">
-                <div class="upload-progress__fill" data-role="fill"></div>
-            </div>
-            <p class="upload-progress__label" data-role="status">Uploading…</p>
-        </div>
+        <ul class="upload-checklist" data-role="checklist" hidden>
+            <li class="upload-step" data-step="upload" data-state="pending">
+                <span class="upload-step__icon" aria-hidden="true"></span>
+                <span class="upload-step__label">Uploading</span>
+            </li>
+            <li class="upload-step" data-step="decode" data-state="pending">
+                <span class="upload-step__icon" aria-hidden="true"></span>
+                <span class="upload-step__label">Reading image</span>
+            </li>
+            <li class="upload-step" data-step="original" data-state="pending">
+                <span class="upload-step__icon" aria-hidden="true"></span>
+                <span class="upload-step__label">Saving master</span>
+            </li>
+            <li class="upload-step" data-step="avif" data-state="pending">
+                <span class="upload-step__icon" aria-hidden="true"></span>
+                <span class="upload-step__label">Encoding AVIF</span>
+                <span class="upload-substeps" data-role="avif-widths"></span>
+            </li>
+            <li class="upload-step" data-step="jpeg" data-state="pending">
+                <span class="upload-step__icon" aria-hidden="true"></span>
+                <span class="upload-step__label">Encoding JPEG fallbacks</span>
+                <span class="upload-substeps" data-role="jpeg-widths"></span>
+            </li>
+            <li class="upload-step" data-step="commit" data-state="pending">
+                <span class="upload-step__icon" aria-hidden="true"></span>
+                <span class="upload-step__label">Saving to library</span>
+            </li>
+        </ul>
+
+        <button type="button" class="auth__link-button upload-retry" data-role="retry" hidden>Try another</button>
     </div>
 
     <div id="error-container" class="error-container" aria-live="polite"></div>

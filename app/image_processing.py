@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 from uuid import uuid4
 import io
 
@@ -115,29 +115,31 @@ def _save_jpeg(img: PILImage.Image, path: Path) -> None:
     )
 
 
+def _target_widths(max_w: int) -> tuple[list[int], list[int]]:
+    """Return the (avif, jpeg) width ladders, capped at the source width.
+
+    We never upscale — a smaller-than-target source just truncates the ladder,
+    so legacy 1600px uploads end up with widths up to 1600 and nothing above.
+    Sorted ascending; encoders iterate descending so the largest (slowest)
+    encode lands first and the bar visibly moves on every step after that.
+    """
+    return (
+        sorted({min(w, max_w) for w in AVIF_WIDTHS}),
+        sorted({min(w, max_w) for w in JPEG_WIDTHS}),
+    )
+
+
 def _encode_derivatives(source: PILImage.Image, out_dir: Path) -> None:
     """Write all AVIF + JPEG derivatives whose target width fits the source.
 
-    We never upscale — a smaller-than-target source just caps the ladder, so
-    legacy 1600px uploads end up with widths up to 1600 and nothing above.
+    Used by the one-shot migration CLI. The upload pipeline interleaves these
+    same encodes with progress events — see ``iter_process_image_bytes``.
     """
-    max_w = source.width
-    targets: set[tuple[int, str]] = set()
-    for w in AVIF_WIDTHS:
-        targets.add((min(w, max_w), "avif"))
-    for w in JPEG_WIDTHS:
-        targets.add((min(w, max_w), "jpg"))
-
-    # Encoding the same image at progressively smaller sizes is cache-friendly
-    # if we go large → small; we resize from the source each time to avoid
-    # compounding resampling artifacts.
-    for width, ext in sorted(targets, reverse=True):
-        scaled = _resized(source, width)
-        out = out_dir / f"{width}.{ext}"
-        if ext == "avif":
-            _save_avif(scaled, out)
-        else:
-            _save_jpeg(scaled, out)
+    avif_widths, jpeg_widths = _target_widths(source.width)
+    for width in sorted(avif_widths, reverse=True):
+        _save_avif(_resized(source, width), out_dir / f"{width}.avif")
+    for width in sorted(jpeg_widths, reverse=True):
+        _save_jpeg(_resized(source, width), out_dir / f"{width}.jpg")
 
 
 def _open_oriented(data: bytes) -> PILImage.Image:
@@ -158,31 +160,51 @@ def _open_oriented(data: bytes) -> PILImage.Image:
     return img
 
 
-def process_image_bytes(
+def iter_process_image_bytes(
     image_data: bytes, *, content_type: Optional[str] = None
-) -> ProcessedImage:
-    """Synchronous core of the pipeline. Shared between the upload route and the
-    one-shot migration CLI so they cannot drift in encoder settings."""
+) -> Iterator[dict]:
+    """Stream the upload pipeline as a sequence of phase events.
 
+    Each yielded dict has a ``phase`` key — "decode", "original", "avif",
+    "jpeg", "complete", or "error" — plus a ``status`` of "active" or "done"
+    for the in-progress phases. The terminal event is one of:
+
+    * ``{"phase": "complete", "storage_id", "width", "height", "dominant_color"}``
+    * ``{"phase": "error", "status_code", "detail"}``
+
+    Errors are yielded rather than raised because the upload route streams these
+    events to the browser inside a chunked HTTP response — once the response has
+    started, an exception can't reach the client cleanly. Callers that want the
+    old throw-on-failure contract should use ``process_image_bytes``, which
+    drains this generator.
+    """
     if len(image_data) > settings.MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File too large. Max size is {settings.MAX_FILE_SIZE // (1024 * 1024)} MB.",
-        )
+        yield {
+            "phase": "error",
+            "status_code": 400,
+            "detail": f"File too large. Max size is {settings.MAX_FILE_SIZE // (1024 * 1024)} MB.",
+        }
+        return
 
     if content_type and content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported file format. Allowed: JPEG, PNG, TIFF, HEIC/HEIF.",
-        )
+        yield {
+            "phase": "error",
+            "status_code": 400,
+            "detail": "Unsupported file format. Allowed: JPEG, PNG, TIFF, HEIC/HEIF.",
+        }
+        return
+
+    yield {"phase": "decode", "status": "active"}
 
     try:
         oriented = _open_oriented(image_data)
     except UnidentifiedImageError:
-        raise HTTPException(
-            status_code=400,
-            detail="Error processing image. Unsupported or corrupted file.",
-        )
+        yield {
+            "phase": "error",
+            "status_code": 400,
+            "detail": "Error processing image. Unsupported or corrupted file.",
+        }
+        return
 
     # Cap the source at MAX_DIMENSION here so the saved "original" already
     # respects site-wide limits. Anything beyond would only ever be downsampled
@@ -195,35 +217,95 @@ def process_image_bytes(
             PILImage.Resampling.LANCZOS,
         )
 
+    avif_widths, jpeg_widths = _target_widths(oriented.width)
+
+    yield {
+        "phase": "decode",
+        "status": "done",
+        "width": oriented.width,
+        "height": oriented.height,
+        "avif_widths": avif_widths,
+        "jpeg_widths": jpeg_widths,
+    }
+
     storage_id = uuid4().hex
     out_dir = Path(settings.UPLOAD_FOLDER) / storage_id
     out_dir.mkdir(parents=True, exist_ok=False)
 
-    try:
-        _save_jpeg(oriented, out_dir / "original.jpg")
-        _encode_derivatives(oriented, out_dir)
-    except Exception:
+    def _cleanup() -> None:
         # Roll back the directory on partial failure so we don't end up with
         # half-encoded sets that the serving route would 200 with missing tiers.
         for p in out_dir.glob("*"):
             p.unlink(missing_ok=True)
-        out_dir.rmdir()
-        raise HTTPException(
-            status_code=500, detail="An error occurred while processing the image."
-        )
+        try:
+            out_dir.rmdir()
+        except OSError:
+            pass
 
-    return ProcessedImage(
-        storage_id=storage_id,
-        width=oriented.width,
-        height=oriented.height,
-        dominant_color=_dominant_color(oriented),
-    )
+    try:
+        yield {"phase": "original", "status": "active"}
+        _save_jpeg(oriented, out_dir / "original.jpg")
+        yield {"phase": "original", "status": "done"}
+
+        # Largest first: gives the user the slowest encode out of the way
+        # first so the checklist visibly moves on every step after that.
+        for width in sorted(avif_widths, reverse=True):
+            yield {"phase": "avif", "status": "active", "width": width}
+            _save_avif(_resized(oriented, width), out_dir / f"{width}.avif")
+            yield {"phase": "avif", "status": "done", "width": width}
+
+        for width in sorted(jpeg_widths, reverse=True):
+            yield {"phase": "jpeg", "status": "active", "width": width}
+            _save_jpeg(_resized(oriented, width), out_dir / f"{width}.jpg")
+            yield {"phase": "jpeg", "status": "done", "width": width}
+    except Exception:
+        _cleanup()
+        yield {
+            "phase": "error",
+            "status_code": 500,
+            "detail": "An error occurred while processing the image.",
+        }
+        return
+
+    yield {
+        "phase": "complete",
+        "storage_id": storage_id,
+        "width": oriented.width,
+        "height": oriented.height,
+        "dominant_color": _dominant_color(oriented),
+    }
+
+
+def process_image_bytes(
+    image_data: bytes, *, content_type: Optional[str] = None
+) -> ProcessedImage:
+    """Throw-on-failure wrapper around the streaming pipeline.
+
+    Used by ``process_and_save_image`` (and through it the migration CLI) where
+    the caller doesn't care about per-phase progress and just wants a synchronous
+    ``ProcessedImage`` or an ``HTTPException``.
+    """
+    for event in iter_process_image_bytes(image_data, content_type=content_type):
+        if event["phase"] == "error":
+            raise HTTPException(
+                status_code=event["status_code"], detail=event["detail"]
+            )
+        if event["phase"] == "complete":
+            return ProcessedImage(
+                storage_id=event["storage_id"],
+                width=event["width"],
+                height=event["height"],
+                dominant_color=event["dominant_color"],
+            )
+    # iter_process_image_bytes always emits a terminal event; this is here to
+    # satisfy type checkers and surface the bug loudly if it ever doesn't.
+    raise HTTPException(status_code=500, detail="Image pipeline did not terminate.")
 
 
 async def process_and_save_image(
     file: UploadFile, user_id: int, content_type: Optional[str] = None
 ) -> ProcessedImage:
-    """Async entry point used by the FastAPI upload route. `user_id` is no longer
+    """Async entry point used by the migration CLI. `user_id` is no longer
     encoded into the filename — the storage id is a bare UUID and ownership lives
     only in the database."""
     image_data = await file.read()
