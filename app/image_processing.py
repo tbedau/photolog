@@ -83,12 +83,18 @@ def _dominant_color(img: PILImage.Image) -> str:
 
 
 def _resized(img: PILImage.Image, width: int) -> PILImage.Image:
-    """Return img resized so its width is `width`, preserving aspect ratio."""
-    if img.width == width:
-        return img
+    """Return img resized so its width is `width`, preserving aspect ratio.
+
+    Height is rounded down to even for the same reason `_target_widths` rounds
+    width: at odd dimensions the AVIF 4:2:0 chroma plane has to be padded, and
+    the padding leaks into the trailing luma row/column as a green fringe.
+    """
     ratio = width / img.width
-    new_size = (width, max(1, round(img.height * ratio)))
-    return img.resize(new_size, PILImage.Resampling.LANCZOS)
+    new_height = max(2, round(img.height * ratio))
+    new_height -= new_height & 1
+    if img.width == width and img.height == new_height:
+        return img
+    return img.resize((width, new_height), PILImage.Resampling.LANCZOS)
 
 
 def _save_avif(img: PILImage.Image, path: Path) -> None:
@@ -122,10 +128,16 @@ def _target_widths(max_w: int) -> tuple[list[int], list[int]]:
     so legacy 1600px uploads end up with widths up to 1600 and nothing above.
     Sorted ascending; encoders iterate descending so the largest (slowest)
     encode lands first and the bar visibly moves on every step after that.
+
+    The cap is rounded down to even because AVIF 4:2:0 subsampling pads the
+    chroma plane at odd widths, and the padding bleeds into the right-edge
+    luma column as a green fringe. Portrait uploads from the X100VI are the
+    typical trigger (e.g. 2133-wide → 2132-wide derivative).
     """
+    cap = max_w - (max_w & 1)
     return (
-        sorted({min(w, max_w) for w in AVIF_WIDTHS}),
-        sorted({min(w, max_w) for w in JPEG_WIDTHS}),
+        sorted({min(w, cap) for w in AVIF_WIDTHS}),
+        sorted({min(w, cap) for w in JPEG_WIDTHS}),
     )
 
 

@@ -36,6 +36,16 @@ def small_jpeg_bytes() -> bytes:
 
 
 @pytest.fixture
+def odd_dimensions_jpeg_bytes() -> bytes:
+    """A 503×501 JPEG — both dimensions odd. Stand-in for X100VI portrait
+    uploads like 2133×3200 that trigger the AVIF green-fringe regression."""
+    img = PILImage.new("RGB", (503, 501), color=(50, 100, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+@pytest.fixture
 def tmp_uploads(tmp_path, monkeypatch):
     """Redirect the pipeline's UPLOAD_FOLDER at a per-test tmp dir so tests
     can't leak derivatives into the real uploads tree."""
@@ -108,6 +118,45 @@ def test_iter_pipeline_truncates_ladder_for_small_source(
     assert decode_done["avif_widths"] == [320, 500]
     assert decode_done["jpeg_widths"] == [500]
     assert events[-1]["phase"] == "complete"
+
+
+def test_iter_pipeline_rounds_odd_dimensions_to_even(
+    odd_dimensions_jpeg_bytes, tmp_uploads
+):
+    """Regression for the green right-edge fringe on portrait X100VI uploads.
+
+    AVIF 4:2:0 chroma subsampling pads the chroma plane at odd dimensions, and
+    the padding bleeds into the trailing luma column/row. Every ladder rung
+    and every encoded derivative must be even on both axes.
+    """
+    events = list(
+        iter_process_image_bytes(
+            odd_dimensions_jpeg_bytes, content_type="image/jpeg"
+        )
+    )
+    decode_done = next(
+        e for e in events if e["phase"] == "decode" and e.get("status") == "done"
+    )
+    # 503-wide source caps the ladder to 502; the 320 rung passes through.
+    assert decode_done["avif_widths"] == [320, 502]
+    assert decode_done["jpeg_widths"] == [502]
+
+    complete = events[-1]
+    assert complete["phase"] == "complete"
+    storage_dir = tmp_uploads / complete["storage_id"]
+
+    for w in decode_done["avif_widths"]:
+        with PILImage.open(storage_dir / f"{w}.avif") as img:
+            size = img.size
+        assert size[0] % 2 == 0 and size[1] % 2 == 0, (
+            f"{w}.avif has odd dimensions {size}"
+        )
+    for w in decode_done["jpeg_widths"]:
+        with PILImage.open(storage_dir / f"{w}.jpg") as img:
+            size = img.size
+        assert size[0] % 2 == 0 and size[1] % 2 == 0, (
+            f"{w}.jpg has odd dimensions {size}"
+        )
 
 
 def test_iter_pipeline_rejects_unsupported_content_type(jpeg_bytes, tmp_uploads):
