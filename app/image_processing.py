@@ -52,7 +52,9 @@ AVIF_WIDTHS: tuple[int, ...] = (320, 640, 1280, 1920, 3200)
 JPEG_WIDTHS: tuple[int, ...] = (1280, 3200)
 
 AVIF_QUALITY = 65
-AVIF_SPEED = 4  # 0 = best, 10 = fastest. 4 is the usual quality/CPU sweet spot.
+AVIF_SPEED = 6  # 0 = best, 10 = fastest. 6 roughly halves encode time vs. 4
+# with a quality drop that's invisible at the largest delivery widths — the
+# right trade-off for a shared-vCPU host (Hetzner CX22) doing one upload a day.
 JPEG_QUALITY = 85
 
 ALLOWED_CONTENT_TYPES = frozenset(
