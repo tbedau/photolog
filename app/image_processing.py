@@ -87,7 +87,7 @@ def _dominant_color(img: PILImage.Image) -> str:
 def _resized(img: PILImage.Image, width: int) -> PILImage.Image:
     """Return img resized so its width is `width`, preserving aspect ratio.
 
-    Height is rounded down to even for the same reason `target_widths` rounds
+    Height is rounded down to even for the same reason `_target_widths` rounds
     width: at odd dimensions the AVIF 4:2:0 chroma plane has to be padded, and
     the padding leaks into the trailing luma row/column as a green fringe.
     """
@@ -123,7 +123,7 @@ def _save_jpeg(img: PILImage.Image, path: Path) -> None:
     )
 
 
-def target_widths(max_w: int) -> tuple[list[int], list[int]]:
+def _target_widths(max_w: int) -> tuple[list[int], list[int]]:
     """Return the (avif, jpeg) width ladders, capped at the source width.
 
     We never upscale — a smaller-than-target source just truncates the ladder,
@@ -135,9 +135,6 @@ def target_widths(max_w: int) -> tuple[list[int], list[int]]:
     chroma plane at odd widths, and the padding bleeds into the right-edge
     luma column as a green fringe. Portrait uploads from the X100VI are the
     typical trigger (e.g. 2133-wide → 2132-wide derivative).
-
-    Public so the `<picture>` builder can use the same ladders — if the two
-    sides drift, the srcset asks for a width that was never written.
     """
     cap = max_w - (max_w & 1)
     return (
@@ -152,7 +149,7 @@ def _encode_derivatives(source: PILImage.Image, out_dir: Path) -> None:
     Used by the one-shot migration CLI. The upload pipeline interleaves these
     same encodes with progress events — see ``iter_process_image_bytes``.
     """
-    avif_widths, jpeg_widths = target_widths(source.width)
+    avif_widths, jpeg_widths = _target_widths(source.width)
     for width in sorted(avif_widths, reverse=True):
         _save_avif(_resized(source, width), out_dir / f"{width}.avif")
     for width in sorted(jpeg_widths, reverse=True):
@@ -234,7 +231,7 @@ def iter_process_image_bytes(
             PILImage.Resampling.LANCZOS,
         )
 
-    avif_widths, jpeg_widths = target_widths(oriented.width)
+    avif_widths, jpeg_widths = _target_widths(oriented.width)
 
     yield {
         "phase": "decode",

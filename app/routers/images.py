@@ -2,6 +2,8 @@ import json
 import logging
 import re
 from datetime import date as date_cls, datetime, time, timedelta
+from functools import lru_cache
+from pathlib import Path
 from typing import Iterator, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
@@ -23,7 +25,6 @@ from ..database import get_session
 from ..image_processing import (
     AVIF_WIDTHS,
     iter_process_image_bytes,
-    target_widths,
 )
 from ..models import Image, User
 from ..security import get_current_user
@@ -44,6 +45,34 @@ _SPEC_RE = re.compile(r"^(\d{2,4}|original)$")
 _IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 
 
+@lru_cache(maxsize=4096)
+def _derivative_widths(storage_id: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Read the actual `(avif, jpeg)` width ladders from the upload directory.
+
+    Disk is authoritative: pre-2026-05-21 uploads have odd-width derivatives
+    (`2133.avif`), post-fix uploads have even-width ones (`2472.avif`), and the
+    DB column doesn't record which. Caching is safe because each storage id is
+    a UUID written once and never mutated — once a directory exists, its
+    derivative set is final.
+    """
+    src_dir: Path = settings.UPLOAD_FOLDER / storage_id
+    avif: list[int] = []
+    jpeg: list[int] = []
+    try:
+        for entry in src_dir.iterdir():
+            stem = entry.stem
+            if not stem.isdigit():
+                continue
+            w = int(stem)
+            if entry.suffix == ".avif":
+                avif.append(w)
+            elif entry.suffix == ".jpg":
+                jpeg.append(w)
+    except FileNotFoundError:
+        pass
+    return tuple(sorted(avif)), tuple(sorted(jpeg))
+
+
 def _picture_data(image: Image) -> dict:
     """Build the srcset/sizes/dimensions payload for one `<picture>` element.
 
@@ -52,13 +81,10 @@ def _picture_data(image: Image) -> dict:
     widths actually exist on disk for any given image.
     """
 
-    # Must match the encoder's ladder exactly — odd source widths get rounded
-    # down to even on disk, so asking for `image.width` directly 404s.
-    avif_widths, jpeg_widths = target_widths(image.width or max(AVIF_WIDTHS))
-
     storage_id = image.filename
+    avif_widths, jpeg_widths = _derivative_widths(storage_id)
 
-    def srcset(widths: list[int], ext: str) -> str:
+    def srcset(widths: tuple[int, ...], ext: str) -> str:
         return ", ".join(f"/i/{storage_id}/{w}.{ext} {w}w" for w in widths)
 
     # `src` is only the last-resort fallback (every modern browser actually
@@ -373,9 +399,10 @@ async def get_legacy_image(
     if not image:
         raise HTTPException(status_code=404)
 
-    _, jpeg_widths = target_widths(image.width or max(AVIF_WIDTHS))
-    fallback_w = jpeg_widths[-1]
+    _, jpeg_widths = _derivative_widths(storage_id)
+    if not jpeg_widths:
+        raise HTTPException(status_code=404)
     return RedirectResponse(
-        url=f"/i/{storage_id}/{fallback_w}.jpg",
+        url=f"/i/{storage_id}/{jpeg_widths[-1]}.jpg",
         status_code=301,
     )

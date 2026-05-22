@@ -12,7 +12,7 @@ from app.config import get_settings
 from app.image_processing import iter_process_image_bytes, process_image_bytes
 from app.main import app
 from app.models import Image as ImageRow
-from app.routers.images import _daily_cap_error, _picture_data
+from app.routers.images import _daily_cap_error, _derivative_widths, _picture_data
 
 
 @pytest.fixture
@@ -159,11 +159,27 @@ def test_iter_pipeline_rounds_odd_dimensions_to_even(
         )
 
 
-def test_picture_data_matches_encoder_for_odd_source_width():
-    """Regression: an odd-width source has even-rounded derivatives on disk,
-    so the srcset must request the same even widths the encoder wrote."""
+def _stub_storage(tmp_uploads, storage_id: str, widths: dict[str, list[int]]) -> None:
+    """Write empty placeholder derivatives so `_derivative_widths` can probe them."""
+    d = tmp_uploads / storage_id
+    d.mkdir(parents=True, exist_ok=True)
+    for ext, ws in widths.items():
+        for w in ws:
+            (d / f"{w}.{ext}").touch()
+
+
+def test_picture_data_uses_post_fix_even_widths_on_disk(tmp_uploads):
+    """New uploads (post commit 1315112) have even-width derivatives — the
+    srcset must point at those exact widths, not at the canonical image width."""
+    _derivative_widths.cache_clear()
+    storage_id = "a" * 32
+    _stub_storage(
+        tmp_uploads,
+        storage_id,
+        {"avif": [320, 640, 1280, 1920, 2472], "jpg": [1280, 2472]},
+    )
     image = ImageRow(
-        filename="a" * 32,
+        filename=storage_id,
         original_filename="x.jpg",
         user_id=1,
         upload_date=datetime.now(),
@@ -171,11 +187,34 @@ def test_picture_data_matches_encoder_for_odd_source_width():
         height=3200,
     )
     data = _picture_data(image)
-    # Largest tier must be 2472, not 2473, to match what the encoder writes.
     assert "/2472.avif 2472w" in data["avif_srcset"]
     assert "/2473.avif" not in data["avif_srcset"]
     assert "/2472.jpg 2472w" in data["jpeg_srcset"]
-    assert "/2473.jpg" not in data["jpeg_srcset"]
+
+
+def test_picture_data_uses_legacy_odd_widths_on_disk(tmp_uploads):
+    """Regression for the May 22 incident: pre-fix uploads have odd-width
+    derivatives (2133.avif) on disk. Building the srcset from the encoder's
+    even-cap rule would 404; we must read what's actually there."""
+    _derivative_widths.cache_clear()
+    storage_id = "b" * 32
+    _stub_storage(
+        tmp_uploads,
+        storage_id,
+        {"avif": [320, 640, 1280, 1920, 2133], "jpg": [1280, 2133]},
+    )
+    image = ImageRow(
+        filename=storage_id,
+        original_filename="x.jpg",
+        user_id=1,
+        upload_date=datetime.now(),
+        width=2133,
+        height=3200,
+    )
+    data = _picture_data(image)
+    assert "/2133.avif 2133w" in data["avif_srcset"]
+    assert "/2132.avif" not in data["avif_srcset"]
+    assert "/2133.jpg 2133w" in data["jpeg_srcset"]
 
 
 def test_iter_pipeline_rejects_unsupported_content_type(jpeg_bytes, tmp_uploads):
