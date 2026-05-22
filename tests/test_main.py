@@ -12,7 +12,7 @@ from app.config import get_settings
 from app.image_processing import iter_process_image_bytes, process_image_bytes
 from app.main import app
 from app.models import Image as ImageRow
-from app.routers.images import _daily_cap_error
+from app.routers.images import _daily_cap_error, _picture_data
 
 
 @pytest.fixture
@@ -157,6 +157,25 @@ def test_iter_pipeline_rounds_odd_dimensions_to_even(
         assert size[0] % 2 == 0 and size[1] % 2 == 0, (
             f"{w}.jpg has odd dimensions {size}"
         )
+
+
+def test_picture_data_matches_encoder_for_odd_source_width():
+    """Regression: an odd-width source has even-rounded derivatives on disk,
+    so the srcset must request the same even widths the encoder wrote."""
+    image = ImageRow(
+        filename="a" * 32,
+        original_filename="x.jpg",
+        user_id=1,
+        upload_date=datetime.now(),
+        width=2473,
+        height=3200,
+    )
+    data = _picture_data(image)
+    # Largest tier must be 2472, not 2473, to match what the encoder writes.
+    assert "/2472.avif 2472w" in data["avif_srcset"]
+    assert "/2473.avif" not in data["avif_srcset"]
+    assert "/2472.jpg 2472w" in data["jpeg_srcset"]
+    assert "/2473.jpg" not in data["jpeg_srcset"]
 
 
 def test_iter_pipeline_rejects_unsupported_content_type(jpeg_bytes, tmp_uploads):

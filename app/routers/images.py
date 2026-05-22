@@ -22,8 +22,8 @@ from ..config import get_settings
 from ..database import get_session
 from ..image_processing import (
     AVIF_WIDTHS,
-    JPEG_WIDTHS,
     iter_process_image_bytes,
+    target_widths,
 )
 from ..models import Image, User
 from ..security import get_current_user
@@ -52,9 +52,9 @@ def _picture_data(image: Image) -> dict:
     widths actually exist on disk for any given image.
     """
 
-    max_w = image.width or max(AVIF_WIDTHS)
-    avif_widths = sorted({min(w, max_w) for w in AVIF_WIDTHS})
-    jpeg_widths = sorted({min(w, max_w) for w in JPEG_WIDTHS})
+    # Must match the encoder's ladder exactly — odd source widths get rounded
+    # down to even on disk, so asking for `image.width` directly 404s.
+    avif_widths, jpeg_widths = target_widths(image.width or max(AVIF_WIDTHS))
 
     storage_id = image.filename
 
@@ -64,7 +64,7 @@ def _picture_data(image: Image) -> dict:
     # `src` is only the last-resort fallback (every modern browser actually
     # picks from `srcset`). Bias to the smaller JPEG so a hypothetical
     # srcset-less client downloads less, not more.
-    fallback_w = jpeg_widths[0] if jpeg_widths else max_w
+    fallback_w = jpeg_widths[0] if jpeg_widths else max(AVIF_WIDTHS)
     return {
         "avif_srcset": srcset(avif_widths, "avif"),
         "jpeg_srcset": srcset(jpeg_widths, "jpg"),
@@ -373,7 +373,8 @@ async def get_legacy_image(
     if not image:
         raise HTTPException(status_code=404)
 
-    fallback_w = min(JPEG_WIDTHS[-1], image.width or JPEG_WIDTHS[-1])
+    _, jpeg_widths = target_widths(image.width or max(AVIF_WIDTHS))
+    fallback_w = jpeg_widths[-1]
     return RedirectResponse(
         url=f"/i/{storage_id}/{fallback_w}.jpg",
         status_code=301,
