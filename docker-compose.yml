@@ -5,13 +5,12 @@ services:
     container_name: "photolog-app"
     environment:
       SECRET_KEY: "${SECRET_KEY}"
-    ports:
-      - "8000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.photolog.rule=Host(`photolog.tillmannbedau.com`)"
       - "traefik.http.routers.photolog.entrypoints=websecure"
       - "traefik.http.routers.photolog.tls.certresolver=cloudflare"
+      - "traefik.http.services.photolog.loadbalancer.server.port=8000"
     volumes:
       - "./uploads:/app/uploads"
       - "./data:/app/data"
