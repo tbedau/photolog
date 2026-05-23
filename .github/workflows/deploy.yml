@@ -18,7 +18,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Step 3: Transfer Application Files to Remote Host
+      # Step 3: Join the tailnet so we can SSH to the VPS (public SSH is closed).
+      # The auth key is reusable + ephemeral, so the runner auto-disappears
+      # from the tailnet when the job ends.
+      - name: Connect to tailnet
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      # Step 4: Transfer Application Files to Remote Host
       - name: Deploy Code to Remote Host
         uses: burnett01/rsync-deployments@7.0.1
         with:
