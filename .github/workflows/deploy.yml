@@ -19,12 +19,15 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # Step 3: Join the tailnet so we can SSH to the VPS (public SSH is closed).
-      # The auth key is reusable + ephemeral, so the runner auto-disappears
+      # Uses an OAuth client (which does not expire) to mint a short-lived,
+      # ephemeral, tag:ci auth key on each run, so the runner auto-disappears
       # from the tailnet when the job ends.
       - name: Connect to tailnet
         uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
 
       # Step 4: Transfer Application Files to Remote Host
       - name: Deploy Code to Remote Host
