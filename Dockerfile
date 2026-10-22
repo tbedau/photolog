@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app"
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.11.14 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 
 # Working directory
 WORKDIR /app
