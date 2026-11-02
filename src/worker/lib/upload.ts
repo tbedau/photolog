@@ -58,26 +58,44 @@ function parseMeta(raw: string | File | null): Meta {
   return m as Meta;
 }
 
-const isJpeg = (b: Uint8Array) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
-// ISO-BMFF: bytes 4–7 are "ftyp", followed by the "avif" brand.
-const isAvif = (b: Uint8Array) =>
-  String.fromCharCode(...b.subarray(4, 12)) === "ftypavif";
+/**
+ * A JPEG without an EXIF (APP1 "Exif") segment. The browser re-encodes from
+ * pixels, so EXIF here means the file bypassed that step and may carry GPS
+ * data; the published original.jpg must never contain it.
+ */
+function isCleanJpeg(b: Uint8Array): boolean {
+  if (b[0] !== 0xff || b[1] !== 0xd8) return false;
+  let i = 2;
+  while (i + 4 <= b.length && b[i] === 0xff) {
+    const marker = b[i + 1];
+    if (marker === 0xda) return true; // start of scan: headers are over
+    const length = (b[i + 2] << 8) | b[i + 3];
+    if (marker === 0xe1 && String.fromCharCode(...b.subarray(i + 4, i + 8)) === "Exif") return false;
+    i += 2 + length;
+  }
+  return i > 2;
+}
 
-async function readPart(
+// ISO-BMFF: bytes 4–7 are "ftyp", followed by the "avif" brand.
+const isAvif = (b: Uint8Array) => String.fromCharCode(...b.subarray(4, 12)) === "ftypavif";
+
+/**
+ * Checks one part's size and header. Returns the File itself so it streams to
+ * R2 without another in-memory copy.
+ */
+async function checkPart(
   form: FormData,
   name: string,
-  check: (b: Uint8Array) => boolean,
-): Promise<ArrayBuffer> {
+  check: (head: Uint8Array) => boolean,
+): Promise<File> {
   const part = form.get(name);
   if (!(part instanceof File)) throw new UploadError(`Missing file ${name}.`);
   if (part.size === 0 || part.size > MAX_PART_BYTES) {
     throw new UploadError(`File ${name} has an invalid size.`);
   }
-  const bytes = await part.arrayBuffer();
-  if (!check(new Uint8Array(bytes, 0, Math.min(12, bytes.byteLength)))) {
-    throw new UploadError(`File ${name} is not the expected format.`);
-  }
-  return bytes;
+  const head = new Uint8Array(await part.slice(0, 64 * 1024).arrayBuffer());
+  if (!check(head)) throw new UploadError(`File ${name} is not the expected format.`);
+  return part;
 }
 
 /** Error message if the user is at the daily cap, else null. */
@@ -100,50 +118,71 @@ export async function storeUpload(env: Env, user: User, form: FormData): Promise
   const meta = parseMeta(form.get("meta"));
   const ladders = targetWidths(meta.width);
 
-  const files: { key: string; body: ArrayBuffer; type: string }[] = [];
-  files.push({ key: "original.jpg", body: await readPart(form, "original", isJpeg), type: "image/jpeg" });
+  const files: { key: string; body: File; type: string }[] = [];
+  files.push({ key: "original.jpg", body: await checkPart(form, "original", isCleanJpeg), type: "image/jpeg" });
   for (const w of ladders.avif) {
-    files.push({ key: `${w}.avif`, body: await readPart(form, `avif_${w}`, isAvif), type: "image/avif" });
+    files.push({ key: `${w}.avif`, body: await checkPart(form, `avif_${w}`, isAvif), type: "image/avif" });
   }
   for (const w of ladders.jpeg) {
-    files.push({ key: `${w}.jpg`, body: await readPart(form, `jpeg_${w}`, isJpeg), type: "image/jpeg" });
+    files.push({ key: `${w}.jpg`, body: await checkPart(form, `jpeg_${w}`, isCleanJpeg), type: "image/jpeg" });
   }
 
   const storageId = crypto.randomUUID().replaceAll("-", "");
   const keys = files.map((f) => `${storageId}/${f.key}`);
+  const day = todayInBerlin();
+  const cleanUp = () => env.PHOTOS.delete(keys).catch(() => {});
 
+  // Wait for every write to settle before any cleanup, so a slow put can't
+  // land after the delete and leave an orphan.
+  const puts = await Promise.allSettled(
+    files.map((f, i) =>
+      env.PHOTOS.put(keys[i], f.body, {
+        httpMetadata: { contentType: f.type, cacheControl: IMMUTABLE },
+      }),
+    ),
+  );
+  if (puts.some((p) => p.status === "rejected")) {
+    console.error("upload_r2_failed", puts.find((p) => p.status === "rejected"));
+    await cleanUp();
+    throw new UploadError("The photo was processed but could not be saved.", 500);
+  }
+
+  // The cap is re-checked inside the INSERT, so two concurrent uploads can't
+  // both get through.
+  let inserted: D1Result;
   try {
-    await Promise.all(
-      files.map((f, i) =>
-        env.PHOTOS.put(keys[i], f.body, {
-          httpMetadata: { contentType: f.type, cacheControl: IMMUTABLE },
-        }),
-      ),
-    );
-    await env.DB.prepare(
+    inserted = await env.DB.prepare(
       `INSERT INTO images
          (storage_id, original_filename, uploaded_at, day, user_id, width, height,
           dominant_color, avif_widths, jpeg_widths)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+       WHERE (SELECT COUNT(*) FROM images WHERE user_id = ?5 AND day = ?4) < ?11`,
     )
       .bind(
         storageId,
         meta.originalFilename,
         new Date().toISOString(),
-        todayInBerlin(),
+        day,
         user.id,
         meta.width,
         meta.height,
         meta.dominantColor,
         JSON.stringify(ladders.avif),
         JSON.stringify(ladders.jpeg),
+        MAX_UPLOADS_PER_DAY,
       )
       .run();
   } catch (err) {
-    // Don't leave a half-written set in R2 that no row points to.
-    await env.PHOTOS.delete(keys).catch(() => {});
-    console.error("upload_store_failed", err);
+    console.error("upload_d1_failed", err);
+    await cleanUp();
     throw new UploadError("The photo was processed but could not be saved.", 500);
+  }
+  if (inserted.meta.changes === 0) {
+    await cleanUp();
+    throw new UploadError(
+      `You have reached your daily upload limit of ${MAX_UPLOADS_PER_DAY} image(s).`,
+      429,
+    );
   }
 
   return storageId;

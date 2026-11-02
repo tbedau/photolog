@@ -1,9 +1,6 @@
 {
   "name": "photolog",
   "description": "A daily photo log on Cloudflare Workers",
-  "directories": {
-    "test": "tests"
-  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "wrangler dev",

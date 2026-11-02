@@ -19,10 +19,11 @@ const BASE_CSP = {
   "object-src": "'none'",
 };
 
-// The upload page encodes images in Web Workers running WebAssembly.
+// The upload page starts encoder Web Workers. The WebAssembly itself is
+// compiled inside those workers, which get their own (empty) policy from the
+// static asset response, so the page needs no 'wasm-unsafe-eval'.
 const UPLOAD_CSP = {
   ...BASE_CSP,
-  "script-src": "'self' 'wasm-unsafe-eval'",
   "worker-src": "'self'",
 };
 

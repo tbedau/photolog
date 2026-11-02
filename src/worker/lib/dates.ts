@@ -8,7 +8,7 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-const dayFormatter = new Intl.DateTimeFormat("en-CA", {
+const dayFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: TIMEZONE,
   year: "numeric",
   month: "2-digit",
@@ -17,7 +17,9 @@ const dayFormatter = new Intl.DateTimeFormat("en-CA", {
 
 /** Today's date in Europe/Berlin as YYYY-MM-DD. */
 export function todayInBerlin(now = new Date()): string {
-  return dayFormatter.format(now);
+  // Assembled from parts so it doesn't depend on a locale's date pattern.
+  const p = Object.fromEntries(dayFormatter.formatToParts(now).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
 function parts(day: string): { y: string; m: number; d: string } {

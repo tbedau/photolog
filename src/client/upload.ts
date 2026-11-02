@@ -111,15 +111,23 @@ interface Task {
 
 /** Runs encode tasks on a small pool of workers, largest first. */
 async function encodeAll(master: ImageBitmap, tasks: Task[]): Promise<Map<string, Blob>> {
-  const poolSize = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
+  // Each worker holds several full-size copies of its image plus a wasm heap
+  // that never shrinks. Phones and low-memory devices (iOS Safari allows
+  // roughly 1–1.5 GB per tab) get two workers; desktops up to four.
+  const deviceMemory = (navigator as { deviceMemory?: number }).deviceMemory ?? 8;
+  const constrained = deviceMemory <= 4 || navigator.maxTouchPoints > 1;
+  const cores = Math.max(1, (navigator.hardwareConcurrency || 2) - 1);
+  const poolSize = Math.min(constrained ? 2 : 4, cores);
   const workers = Array.from({ length: Math.min(poolSize, tasks.length) }, () =>
     new Worker(ENCODER_URL, { type: "module" }),
   );
   const results = new Map<string, Blob>();
   const queue = [...tasks];
   let nextId = 0;
+  let failed = false;
 
   const run = async (worker: Worker, task: Task) => {
+    if (failed) return;
     task.onStart();
     const bitmap = await createImageBitmap(master, {
       resizeWidth: task.width,
@@ -145,8 +153,13 @@ async function encodeAll(master: ImageBitmap, tasks: Task[]): Promise<Map<string
   try {
     await Promise.all(
       workers.map(async (worker) => {
-        for (let task = queue.shift(); task; task = queue.shift()) {
-          await run(worker, task);
+        try {
+          for (let task = queue.shift(); task && !failed; task = queue.shift()) {
+            await run(worker, task);
+          }
+        } catch (err) {
+          failed = true; // stop the other workers picking up new jobs
+          throw err;
         }
       }),
     );
@@ -194,10 +207,18 @@ function send(form: FormData): Promise<{ ok: boolean; body: any; status: number 
   });
 }
 
+const UNREADABLE =
+  "This browser can't read that file. JPEG and PNG work everywhere; HEIC and TIFF only in Safari.";
+
 async function startUpload(file: File) {
+  // Claim the drop area first, so a second drop during the precheck is ignored.
+  dropArea.dataset.state = "processing";
   clearError();
   fileInput.value = "";
-  if (!(await precheck())) return;
+  if (!(await precheck())) {
+    dropArea.dataset.state = "idle";
+    return;
+  }
 
   filenameEl.textContent = file.name;
   filenameEl.hidden = false;
@@ -205,8 +226,18 @@ async function startUpload(file: File) {
   selectBtn.hidden = true;
   retryBtn.hidden = true;
   checklist.hidden = false;
-  dropArea.dataset.state = "processing";
 
+  try {
+    await processAndUpload(file);
+  } catch (err) {
+    // Anything unexpected (e.g. no OffscreenCanvas in an old browser) must
+    // end in a visible error with a retry button, never a frozen checklist.
+    console.error(err);
+    fail("Something went wrong while processing the photo. Try again, or try another browser.");
+  }
+}
+
+async function processAndUpload(file: File) {
   // Decode. createImageBitmap applies EXIF orientation and converts to sRGB;
   // re-encoding from pixels drops all metadata (location, camera serial, …).
   setStep("decode", "active");
@@ -214,101 +245,129 @@ async function startUpload(file: File) {
   try {
     source = await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch {
-    fail("This browser can't read that file. Try a JPEG, PNG or HEIC export.");
+    fail(UNREADABLE);
     return;
   }
   const size = masterSize(source.width, source.height);
-  const master =
-    size.width === source.width && size.height === source.height
-      ? source
-      : await createImageBitmap(source, {
-          resizeWidth: size.width,
-          resizeHeight: size.height,
-          resizeQuality: "high",
-        });
-  const ladders = targetWidths(size.width);
-  const color = await dominantColor(master);
-  renderChips(avifChips, ladders.avif);
-  renderChips(jpegChips, ladders.jpeg);
-  setStep("decode", "done");
+  let master: ImageBitmap;
+  if (size.width === source.width && size.height === source.height) {
+    master = source;
+  } else {
+    try {
+      master = await createImageBitmap(source, {
+        resizeWidth: size.width,
+        resizeHeight: size.height,
+        resizeQuality: "high",
+      });
+    } finally {
+      // The full-resolution decode can be ~100 MB; release it right away.
+      source.close();
+    }
+  }
 
-  // Encode. Largest first, so the slowest jobs don't end up last on one worker.
-  let avifLeft = ladders.avif.length;
-  let jpegLeft = ladders.jpeg.length;
-  const tasks: Task[] = [
-    {
-      field: "original",
-      format: "jpeg",
-      width: size.width,
-      height: size.height,
-      onStart: () => setStep("original", "active"),
-      onDone: () => setStep("original", "done"),
-    },
-    ...[...ladders.avif].reverse().map((w): Task => ({
-      field: `avif_${w}`,
-      format: "avif",
-      width: w,
-      height: derivativeHeight(size, w),
-      onStart: () => {
-        setStep("avif", "active");
-        setChip(avifChips, w, "active");
-      },
-      onDone: () => {
-        setChip(avifChips, w, "done");
-        if (--avifLeft === 0) setStep("avif", "done");
-      },
-    })),
-    ...[...ladders.jpeg].reverse().map((w): Task => ({
-      field: `jpeg_${w}`,
-      format: "jpeg",
-      width: w,
-      height: derivativeHeight(size, w),
-      onStart: () => {
-        setStep("jpeg", "active");
-        setChip(jpegChips, w, "active");
-      },
-      onDone: () => {
-        setChip(jpegChips, w, "done");
-        if (--jpegLeft === 0) setStep("jpeg", "done");
-      },
-    })),
-  ];
-
-  let files: Map<string, Blob>;
   try {
-    files = await encodeAll(master, tasks);
-  } catch (err) {
-    console.error(err);
-    fail("Encoding failed. Try again, or try another browser.");
-    return;
+    const ladders = targetWidths(size.width);
+    const color = await dominantColor(master);
+    renderChips(avifChips, ladders.avif);
+    renderChips(jpegChips, ladders.jpeg);
+    setStep("decode", "done");
+
+    // The largest JPEG fallback is often pixel-identical to the master
+    // (same size, same encoder settings); reuse it instead of encoding twice.
+    const topJpeg = ladders.jpeg.at(-1)!;
+    const reuseMaster = topJpeg === size.width && derivativeHeight(size, topJpeg) === size.height;
+
+    // Largest first, so the slowest jobs don't end up last on one worker.
+    let avifLeft = ladders.avif.length;
+    let jpegLeft = ladders.jpeg.length;
+    const jpegDone = (w: number) => {
+      setChip(jpegChips, w, "done");
+      if (--jpegLeft === 0) setStep("jpeg", "done");
+    };
+    const tasks: Task[] = [
+      {
+        field: "original",
+        format: "jpeg",
+        width: size.width,
+        height: size.height,
+        onStart: () => {
+          setStep("original", "active");
+          if (reuseMaster) {
+            setStep("jpeg", "active");
+            setChip(jpegChips, topJpeg, "active");
+          }
+        },
+        onDone: () => {
+          setStep("original", "done");
+          if (reuseMaster) jpegDone(topJpeg);
+        },
+      },
+      ...[...ladders.avif].reverse().map((w): Task => ({
+        field: `avif_${w}`,
+        format: "avif",
+        width: w,
+        height: derivativeHeight(size, w),
+        onStart: () => {
+          setStep("avif", "active");
+          setChip(avifChips, w, "active");
+        },
+        onDone: () => {
+          setChip(avifChips, w, "done");
+          if (--avifLeft === 0) setStep("avif", "done");
+        },
+      })),
+      ...[...ladders.jpeg]
+        .reverse()
+        .filter((w) => !(reuseMaster && w === topJpeg))
+        .map((w): Task => ({
+          field: `jpeg_${w}`,
+          format: "jpeg",
+          width: w,
+          height: derivativeHeight(size, w),
+          onStart: () => {
+            setStep("jpeg", "active");
+            setChip(jpegChips, w, "active");
+          },
+          onDone: () => jpegDone(w),
+        })),
+    ];
+
+    let files: Map<string, Blob>;
+    try {
+      files = await encodeAll(master, tasks);
+    } catch (err) {
+      console.error(err);
+      fail("Encoding failed. Try again, or try another browser.");
+      return;
+    }
+    if (reuseMaster) files.set(`jpeg_${topJpeg}`, files.get("original")!);
+
+    // Upload.
+    const form = new FormData();
+    form.append(
+      "meta",
+      JSON.stringify({
+        originalFilename: file.name,
+        width: size.width,
+        height: size.height,
+        dominantColor: color,
+      }),
+    );
+    for (const [field, blob] of files) form.append(field, blob, field);
+
+    setStep("upload", "active");
+    dropArea.dataset.state = "uploading";
+    const { ok, body, status } = await send(form);
+    if (!ok || !body?.success) {
+      fail(body?.error || (status ? `Upload failed (HTTP ${status}).` : "Network error while uploading."));
+      return;
+    }
+    setStep("commit", "done");
+    dropArea.dataset.state = "done";
+    setTimeout(() => location.assign(safeRedirect(body.redirect, "/")), 450);
   } finally {
     master.close();
-    source.close();
   }
-
-  // Upload.
-  const form = new FormData();
-  form.append(
-    "meta",
-    JSON.stringify({
-      originalFilename: file.name,
-      width: size.width,
-      height: size.height,
-      dominantColor: color,
-    }),
-  );
-  for (const [field, blob] of files) form.append(field, blob, field);
-
-  setStep("upload", "active");
-  dropArea.dataset.state = "uploading";
-  const { ok, body, status } = await send(form);
-  if (!ok || !body?.success) {
-    fail(body?.error || (status ? `Upload failed (HTTP ${status}).` : "Network error while uploading."));
-    return;
-  }
-  setStep("commit", "done");
-  dropArea.dataset.state = "done";
-  setTimeout(() => location.assign(safeRedirect(body.redirect, "/")), 450);
 }
 
 // ---------- Wiring ----------
@@ -334,10 +393,10 @@ dropArea.addEventListener("drop", (event) => {
   dropArea.classList.remove("auth__drop--dragging");
   if (dropArea.dataset.state !== "idle") return;
   const file = event.dataTransfer?.files[0];
-  if (file) startUpload(file);
+  if (file) void startUpload(file);
 });
 
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0];
-  if (file) startUpload(file);
+  if (file) void startUpload(file);
 });

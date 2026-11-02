@@ -54,7 +54,8 @@ for (const img of images) {
 
   // "2026-10-18 16:54:50.559852" (naive UTC) → "2026-10-18T16:54:50.559Z"
   const [date, time] = img.upload_date.split(" ");
-  const uploadedAt = `${date}T${time.slice(0, 12).padEnd(12, ".000").slice(0, 12)}Z`;
+  const [hms, frac = ""] = time.split(".");
+  const uploadedAt = `${date}T${hms}.${frac.padEnd(3, "0").slice(0, 3)}Z`;
 
   lines.push(
     "INSERT INTO images (id, storage_id, original_filename, uploaded_at, day, user_id, width, height, dominant_color, avif_widths, jpeg_widths) VALUES (" +
@@ -73,10 +74,12 @@ for (const img of images) {
   }
 }
 
+// Entries no row points to: leftover loose files from the pre-2024 flat
+// layout, which the old app no longer served either.
 const referenced = new Set(images.map((i) => i.filename));
 const orphans = readdirSync(join(dir, "uploads")).filter((d) => !referenced.has(d));
 
 writeFileSync(join(dir, "import.sql"), lines.join("\n") + "\n");
 writeFileSync(join(dir, "objects.tsv"), objects.join("\n") + "\n");
-console.log(`${images.length} rows, ${objects.length} files, ${orphans.length} orphan folders skipped (${orphans.join(", ")})`);
+console.log(`${images.length} rows, ${objects.length} files, ${orphans.length} unreferenced uploads/ entries skipped (${orphans.join(", ")})`);
 for (const p of problems) console.log("PROBLEM", p);

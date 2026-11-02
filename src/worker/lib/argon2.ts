@@ -18,14 +18,14 @@ type ComputeHash = (params: {
   tagLength: number;
 }) => Uint8Array;
 
-let compute: Promise<ComputeHash> | undefined;
-
+// A fresh instance per verification: its wasm memory starts at ~68 MB and
+// never shrinks, so keeping it would leave little of the isolate's 128 MB for
+// an upload handled next. Logins are rare, so instantiating each time is fine.
 function loader(): Promise<ComputeHash> {
-  compute ??= setupWasm(
+  return setupWasm(
     async (imports: WebAssembly.Imports) => ({ instance: await WebAssembly.instantiate(simd, imports) }),
     async (imports: WebAssembly.Imports) => ({ instance: await WebAssembly.instantiate(noSimd, imports) }),
   );
-  return compute;
 }
 
 function fromBase64(s: string): Uint8Array {
