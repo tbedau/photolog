@@ -118,9 +118,17 @@ async function encodeAll(master: ImageBitmap, tasks: Task[]): Promise<Map<string
   const constrained = deviceMemory <= 4 || navigator.maxTouchPoints > 1;
   const cores = Math.max(1, (navigator.hardwareConcurrency || 2) - 1);
   const poolSize = Math.min(constrained ? 2 : 4, cores);
-  const workers = Array.from({ length: Math.min(poolSize, tasks.length) }, () =>
-    new Worker(ENCODER_URL, { type: "module" }),
-  );
+  // A worker that fails to load (e.g. the page was open across a deploy and
+  // its script URL is gone) fails the whole batch instead of hanging.
+  let rejectAll: (err: Error) => void = () => {};
+  const loadFailure = new Promise<never>((_, reject) => (rejectAll = reject));
+  loadFailure.catch(() => {});
+  const workers = Array.from({ length: Math.min(poolSize, tasks.length) }, () => {
+    const worker = new Worker(ENCODER_URL, { type: "module" });
+    worker.addEventListener("error", (e) => rejectAll(new Error(e.message || "Encoder failed to load")));
+    return worker;
+  });
+  const JOB_TIMEOUT_MS = 180_000;
   const results = new Map<string, Blob>();
   const queue = [...tasks];
   let nextId = 0;
@@ -135,16 +143,20 @@ async function encodeAll(master: ImageBitmap, tasks: Task[]): Promise<Map<string
       resizeQuality: "high",
     });
     const id = nextId++;
-    const data = await new Promise<ArrayBuffer>((resolve, reject) => {
-      worker.onmessage = (event: MessageEvent<EncodeResult>) => {
-        if (event.data.id !== id) return;
-        if ("error" in event.data) reject(new Error(event.data.error));
-        else resolve(event.data.data);
-      };
-      worker.onerror = (e) => reject(new Error(e.message));
-      const job: EncodeJob = { id, format: task.format, bitmap, wasm: WASM };
-      worker.postMessage(job, [bitmap]);
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const data = await Promise.race([
+      loadFailure,
+      new Promise<ArrayBuffer>((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("Encoding timed out")), JOB_TIMEOUT_MS);
+        worker.onmessage = (event: MessageEvent<EncodeResult>) => {
+          if (event.data.id !== id) return;
+          if ("error" in event.data) reject(new Error(event.data.error));
+          else resolve(event.data.data);
+        };
+        const job: EncodeJob = { id, format: task.format, bitmap, wasm: WASM };
+        worker.postMessage(job, [bitmap]);
+      }),
+    ]).finally(() => clearTimeout(timer));
     const type = task.format === "avif" ? "image/avif" : "image/jpeg";
     results.set(task.field, new Blob([data], { type }));
     task.onDone();
