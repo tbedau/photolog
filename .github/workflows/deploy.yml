@@ -1,60 +1,41 @@
-name: Deploy Photolog App
+name: Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  check:
     runs-on: ubuntu-latest
-
     steps:
-      # Step 1: Checkout the repository
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      # Step 2: Set up Docker
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Step 3: Join the tailnet so we can SSH to the VPS (public SSH is closed).
-      # Uses an OAuth client (which does not expire) to mint a short-lived,
-      # ephemeral, tag:ci auth key on each run, so the runner auto-disappears
-      # from the tailnet when the job ends.
-      - name: Connect to tailnet
-        uses: tailscale/github-action@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
 
-      # Step 4: Transfer Application Files to Remote Host
-      - name: Deploy Code to Remote Host
-        uses: burnett01/rsync-deployments@7.0.1
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          switches: -avrh --exclude=data/ --exclude=uploads/ --delete
-          path: ./
-          remote_path: ${{ secrets.SSH_REMOTE_PATH }}
-          remote_host: ${{ secrets.SSH_HOST }}
-          remote_user: ${{ secrets.SSH_USERNAME }}
-          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      # Step 4: Deploy Application on Remote Host
-      - name: Deploy on Remote Host
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ${{ secrets.SSH_REMOTE_PATH }}
-
-            # Write secrets directly to .env file
-            echo "Creating the .env file for Docker..."
-            echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" > .env
-            chmod 600 .env
-            echo "The .env file has been created."
-
-            docker compose down
-            docker compose up -d --build
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Runs scripts/build.mjs (the wrangler "build" command) first.
+      - run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -1,0 +1,2 @@
+ENVIRONMENT=development
+SECRET_KEY=replace-with-output-of-openssl-rand-hex-32

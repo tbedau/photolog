@@ -1,38 +1,80 @@
 # Photolog
 
-Photolog is a minimalist, responsive web application for sharing and viewing a personal collection of images. The original idea behind the app was to upload one image per day, functioning as a kind of visual diary, but this behavior is configurable. The app allows authenticated users to upload photos. Visitors can browse a snap-scroll feed of the most recent photos, explore the full archive grouped by month, and share any individual photo via its date-based permalink.
+A minimal site for sharing one photo a day. Visitors scroll a snap-scroll feed
+of recent photos, browse the full archive by month, and share a photo through
+its date permalink (`/2026/10/18`). One signed-in user uploads.
 
-I am running an instance of Photolog at [https://photolog.tillmannbedau.com](https://photolog.tillmannbedau.com), where I try to share one photo per day from my analog archives and occasionally also upload recent images.
+Running at [photolog.tillmannbedau.com](https://photolog.tillmannbedau.com).
 
-## Setup and Installation
+## How it works
 
-1. **Clone the Repository:**
+- **Cloudflare Worker** ([Hono](https://hono.dev), server-rendered JSX, no
+  client framework). Public pages are cached at the edge for 5 minutes;
+  signed-in requests bypass the cache.
+- **D1** holds photo metadata and the user (`migrations/`).
+- **R2** holds the image files under `{storage_id}/original.jpg` and
+  `{storage_id}/{width}.{avif|jpg}`, served from `/i/…` with immutable caching.
+- **Image processing runs in the uploader's browser.** `src/client/upload.ts`
+  decodes the photo (applying EXIF orientation and dropping all metadata),
+  scales the master to at most 3200 px, and encodes five AVIF widths
+  (libaom, quality 65 with film-grain synthesis) plus two JPEG fallbacks
+  (mozjpeg, quality 85) in parallel Web Workers. The Worker validates the set
+  against the size ladder in `src/shared/ladder.ts` and stores it.
+- **Login** verifies the Argon2id hash in WASM. That needs more CPU than the
+  Workers Free plan allows, so the account must be on Workers Paid. Login
+  attempts are rate limited to 5 per minute per IP.
 
-    ```sh
-    git clone git@github.com:tbedau/photolog.git
-    cd photolog
-    ```
+Each photo also stores its dimensions and average colour, so pages reserve
+the right space and paint a matching placeholder before the image arrives.
 
-2. **Create a .env File:** In the root directory, create a `.env` file and set your secret key:
+## Development
 
-    ``` sh
-    SECRET_KEY=your-secret-key
-    ```
+```sh
+npm install
+cp .dev.vars.example .dev.vars        # then set SECRET_KEY
+npx wrangler d1 migrations apply photolog --local
+npm run hash-password                 # prints an Argon2id hash
+npx wrangler d1 execute photolog --local \
+  --command "INSERT INTO users (username, password_hash) VALUES ('me', '<hash>')"
+npm run dev                           # http://localhost:8787
+```
 
-3. **Create a User:** Make sure you have [uv installed](https://docs.astral.sh/uv/getting-started/installation/). Then run the following command to create an initial user. You will be prompted to set a password:
+`npm run typecheck` and `npm test` run the checks CI runs.
 
-    ```sh
-    uv run cli.py create-user <USERNAME>
-    ```
+## Deployment
 
-4. **Run the Development Server:** Start the application locally:
+Pushes to `main` deploy through GitHub Actions (`.github/workflows/deploy.yml`)
+with the repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
-    ```sh
-    uv run fastapi dev
-    ```
+Schema changes are applied by hand before deploying code that needs them:
 
-5. **Start Uploading Photos:** Visit [http://127.0.0.1:8000/upload](http://127.0.0.1:8000/upload) to log in and start uploading photos.
+```sh
+npx wrangler d1 migrations apply photolog --remote
+```
 
-6. **Configure the Application:** Customize the app behavior (e.g., upload limits, max dimensions) by editing app/config.py to fit your needs. Also edit HTML templates in the `templates/`folder to customize page headers and so on.
+One-time setup for a new environment: create the D1 database and R2 bucket,
+put the database id into `wrangler.jsonc`, apply the migrations, and set the
+session key with `npx wrangler secret put SECRET_KEY`.
 
-7. **Deploy the app:** The `Dockerfile` and `docker-compose.yml` can serve as a reference for containerized deployment.
+## Maintenance
+
+Change the password:
+
+```sh
+npm run hash-password
+npx wrangler d1 execute photolog --remote \
+  --command "UPDATE users SET password_hash = '<hash>' WHERE username = 'till'"
+```
+
+Delete a photo (row first, so it disappears from the site immediately):
+
+```sh
+npx wrangler d1 execute photolog --remote --command "DELETE FROM images WHERE storage_id = '<id>'"
+npx wrangler r2 object delete photolog/<id>/original.jpg   # repeat for each file
+```
+
+## Migration from the Python version
+
+`scripts/export-legacy.mjs` converted the SQLite database and uploads folder
+of the original FastAPI app into D1 rows and R2 objects. Photos keep their
+original permalink dates.
