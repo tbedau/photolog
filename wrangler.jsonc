@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "photolog",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "21fc84f2-62a6-46de-922c-7c845d9e5580",
       "migrations_dir": "migrations"
     }
   ],
