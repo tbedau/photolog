@@ -64,21 +64,31 @@ export function endSession(c: Context<AppEnv>): void {
   });
 }
 
-export function hasSessionCookie(c: Context<AppEnv>): boolean {
-  return getCookie(c, cookieName(c.env)) !== undefined;
-}
-
-/** The signed-in user, or null for a missing, expired or forged session. */
-export async function currentUser(c: Context<AppEnv>): Promise<User | null> {
+/** Username from a valid, unexpired session token, or null. No database access. */
+export async function sessionUsername(c: Context<AppEnv>): Promise<string | null> {
   const token = getCookie(c, cookieName(c.env));
   if (!token) return null;
   try {
     const payload = await verify(token, c.env.SECRET_KEY, "HS256");
-    if (typeof payload.sub !== "string" || typeof payload.iat !== "number") return null;
-    return await c.env.DB.prepare("SELECT id, username FROM users WHERE username = ?")
-      .bind(payload.sub)
-      .first<User>();
+    // hono only checks `exp` when present; require all three like the old app.
+    if (
+      typeof payload.sub !== "string" ||
+      typeof payload.iat !== "number" ||
+      typeof payload.exp !== "number"
+    ) {
+      return null;
+    }
+    return payload.sub;
   } catch {
     return null;
   }
+}
+
+/** The signed-in user, or null for a missing, expired or forged session. */
+export async function currentUser(c: Context<AppEnv>): Promise<User | null> {
+  const username = await sessionUsername(c);
+  if (!username) return null;
+  return c.env.DB.prepare("SELECT id, username FROM users WHERE username = ?")
+    .bind(username)
+    .first<User>();
 }

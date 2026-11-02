@@ -20,6 +20,11 @@ export type EncodeResult = { id: number; data: ArrayBuffer } | { id: number; err
 const AVIF_OPTIONS = { quality: 65, speed: 6, subsample: 1, denoiseLevel: 8 };
 const JPEG_OPTIONS = { quality: 85, progressive: true, optimize_coding: true };
 
+// @jsquash/avif switches to its multi-threaded build when SharedArrayBuffer is
+// available, which needs a cross-origin-isolated page (COOP + COEP). The site
+// sends COOP but not COEP, so the single-threaded avif_enc.wasm that
+// scripts/build.mjs ships is the one used. Adding COEP would require shipping
+// avif_enc_mt.wasm and its worker script too.
 const ready: Partial<Record<EncodeJob["format"], Promise<unknown>>> = {};
 
 function load(format: EncodeJob["format"], url: string): Promise<unknown> {

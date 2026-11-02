@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { AppEnv } from "./env";
-import { authenticate, currentUser, endSession, hasSessionCookie, startSession } from "./lib/auth";
-import { dayFromPath } from "./lib/dates";
+import { authenticate, currentUser, endSession, sessionUsername, startSession } from "./lib/auth";
+import { dayFromPath, permalink, todayInBerlin } from "./lib/dates";
 import { allImages, imageByStorageId, imageForDay, latestImages } from "./lib/images";
 import { sameOriginPosts, securityHeaders } from "./lib/security";
 import { dailyCapError, storeUpload, UploadError } from "./lib/upload";
@@ -30,7 +30,8 @@ async function cachedPage(
 ): Promise<Response> {
   const cache = caches.default;
   const key = new Request(new URL(c.req.path, c.req.url).toString());
-  const signedIn = hasSessionCookie(c);
+  // Only a valid session skips the cache; any other cookie value is ignored.
+  const signedIn = (await sessionUsername(c)) !== null;
   if (!signedIn) {
     const hit = await cache.match(key);
     if (hit) {
@@ -79,9 +80,12 @@ app.get("/i/:id/:file", async (c) => {
   const { id, file } = c.req.param();
   if (!STORAGE_ID.test(id) || !DERIVATIVE.test(file)) return c.notFound();
 
-  // The Cache API also answers If-None-Match with a 304.
+  // Keyed on the path alone (no query string, always GET), so the cache can't
+  // be bypassed with ?x=… and HEAD requests share the GET entry. Passing the
+  // request headers lets the Cache API answer If-None-Match with a 304.
   const cache = caches.default;
-  const hit = await cache.match(c.req.raw);
+  const url = new URL(c.req.path, c.req.url).toString();
+  const hit = await cache.match(new Request(url, { headers: c.req.raw.headers }));
   // Re-wrap: cached responses have immutable headers, and middleware adds some.
   if (hit) return new Response(hit.body, hit);
 
@@ -94,7 +98,7 @@ app.get("/i/:id/:file", async (c) => {
   headers.set("Cache-Control", "public, max-age=31536000, immutable");
   headers.set("Content-Disposition", "inline");
   const res = new Response(object.body, { headers });
-  c.executionCtx.waitUntil(cache.put(c.req.raw, res.clone()));
+  c.executionCtx.waitUntil(cache.put(url, res.clone()));
   return res;
 });
 
@@ -165,9 +169,15 @@ app.post("/upload", async (c) => {
     if (err instanceof UploadError) return c.json({ error: err.message }, err.status);
     throw err;
   }
+  // Purge this data centre's copies of the pages that change: the feed, the
+  // archive, and the previous photo's page (it gains a "next" link).
+  const prev = await c.env.DB.prepare("SELECT day FROM images WHERE day < ? ORDER BY day DESC LIMIT 1")
+    .bind(todayInBerlin())
+    .first<{ day: string }>();
+  const stale = [...PUBLIC_PAGES, ...(prev ? [permalink(prev.day)] : [])];
   const cache = caches.default;
   c.executionCtx.waitUntil(
-    Promise.all(PUBLIC_PAGES.map((path) => cache.delete(new URL(path, c.req.url).toString()))),
+    Promise.all(stale.map((path) => cache.delete(new URL(path, c.req.url).toString()))),
   );
   return c.json({ success: true, redirect: "/" });
 });

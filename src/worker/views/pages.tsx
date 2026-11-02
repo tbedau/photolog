@@ -158,7 +158,8 @@ export function UploadPage() {
         >
           <p class="auth__drop-text" data-role="prompt">Drag &amp; drop or</p>
           <p class="auth__drop-text auth__drop-filename" data-role="filename" hidden></p>
-          <input type="file" id="file-input" name="file" accept="image/*" hidden />
+          {/* Decoding happens in the browser: JPEG and PNG work everywhere, HEIC and TIFF only in Safari. */}
+          <input type="file" id="file-input" name="file" accept=".jpg,.jpeg,.png,.heic,.heif,.tif,.tiff,image/jpeg,image/png,image/heic,image/heif,image/tiff" hidden />
           <button type="button" class="auth__button" data-role="select">Select</button>
           <ul class="upload-checklist" data-role="checklist" hidden>
             {STEPS.map(([step, label, chips]) => (

@@ -19,7 +19,9 @@ Running at [photolog.tillmannbedau.com](https://photolog.tillmannbedau.com).
   scales the master to at most 3200 px, and encodes five AVIF widths
   (libaom, quality 65 with film-grain synthesis) plus two JPEG fallbacks
   (mozjpeg, quality 85) in parallel Web Workers. The Worker validates the set
-  against the size ladder in `src/shared/ladder.ts` and stores it.
+  against the size ladder in `src/shared/ladder.ts` and stores it, rejecting
+  JPEGs that still carry EXIF data. Because the browser decodes the photo,
+  JPEG and PNG work everywhere but HEIC and TIFF only in Safari.
 - **Login** verifies the Argon2id hash in WASM. That needs more CPU than the
   Workers Free plan allows, so the account must be on Workers Paid. Login
   attempts are rate limited to 5 per minute per IP.
@@ -44,13 +46,9 @@ npm run dev                           # http://localhost:8787
 ## Deployment
 
 Pushes to `main` deploy through GitHub Actions (`.github/workflows/deploy.yml`)
-with the repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-
-Schema changes are applied by hand before deploying code that needs them:
-
-```sh
-npx wrangler d1 migrations apply photolog --remote
-```
+with the repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The
+workflow applies pending D1 migrations (`migrations/`) before deploying, so a
+migration must keep working with the code that is still live.
 
 One-time setup for a new environment: create the D1 database and R2 bucket,
 put the database id into `wrangler.jsonc`, apply the migrations, and set the
@@ -75,6 +73,15 @@ npx wrangler r2 object delete photolog/<id>/original.jpg   # repeat for each fil
 
 ## Migration from the Python version
 
-`scripts/export-legacy.mjs` converted the SQLite database and uploads folder
-of the original FastAPI app into D1 rows and R2 objects. Photos keep their
-original permalink dates.
+`scripts/export-legacy.mjs` converts a copy of the old app's SQLite database
+and `uploads/` folder into D1 rows and R2 objects. Photos keep their original
+permalink dates, and each photo's derivative widths are read from the files on
+disk.
+
+```sh
+rsync -a <vps>:/srv/docker/applications/photolog/{data,uploads} migration/
+node scripts/export-legacy.mjs migration   # writes migration/import.sql and objects.tsv
+# import.sql starts with DELETE FROM images; DELETE FROM users;
+npx wrangler d1 execute photolog --remote --file migration/import.sql
+# then upload every "<key>\t<file>\t<type>" line of objects.tsv to R2
+```
