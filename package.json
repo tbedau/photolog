@@ -1,0 +1,39 @@
+{
+  "name": "photolog",
+  "description": "A daily photo log on Cloudflare Workers",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "node scripts/build.mjs && tsc -p tsconfig.json && tsc -p tsconfig.client.json",
+    "test": "vitest run",
+    "hash-password": "node scripts/hash-password.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tbedau/photolog.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/tbedau/photolog/issues"
+  },
+  "homepage": "https://github.com/tbedau/photolog#readme",
+  "dependencies": {
+    "argon2id": "^1.0.1",
+    "hono": "^4.13.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261030.1",
+    "@jsquash/avif": "^2.1.1",
+    "@jsquash/jpeg": "^1.6.0",
+    "esbuild": "^0.28.2",
+    "hash-wasm": "^4.12.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.156.0"
+  },
+  "private": true
+}

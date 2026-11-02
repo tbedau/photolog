@@ -1,20 +1,15 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
-# Environment variables
+node_modules/
+.wrangler/
+.dev.vars
 .env
 
-# Other folders
+# Build output (scripts/build.mjs)
+public/static/build/
+src/worker/generated/
+
+# Local copies of production data during migration
 data/
 uploads/
 
-# macOS
 .DS_Store
+migration/
